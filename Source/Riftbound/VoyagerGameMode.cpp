@@ -15,17 +15,18 @@
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "Misc/CommandLine.h"
+#include "Async/Async.h"
 
 namespace
 {
-    bool IsVoyagerTest(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerCrimeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerBuildingAudit"))|| FParse::Param(FCommandLine::Get(),TEXT("VoyagerRealismAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerAITest"))||FParse::Param(FCommandLine::Get(),TEXT("LivingCityIsolationAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityNetAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerLifeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"));}
+    bool IsVoyagerTest(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityLifeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCrimeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerBuildingAudit"))|| FParse::Param(FCommandLine::Get(),TEXT("VoyagerRealismAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerAITest"))||FParse::Param(FCommandLine::Get(),TEXT("LivingCityIsolationAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityNetAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerLifeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"));}
     int32 ArrivalPlanet(int32 System,int32 SavedPlanet)
     {
         if(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNatureVisit")))
             for(int32 Planet=0;Planet<5;++Planet)if(Voyager::Biome(System,Planet)==0)return Planet;
         return SavedPlanet;
     }
-    FString SaveSlot(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"))?TEXT("Voyager-Automation-Surface"):(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))?TEXT("Voyager-Automation-Network"):(IsVoyagerTest()?TEXT("Voyager-Automation"):TEXT("Voyager-Expedition")));}
+    FString SaveSlot(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityLifeAudit"))?TEXT("Voyager-Automation-CityLife"):FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"))?TEXT("Voyager-Automation-Surface"):(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))?TEXT("Voyager-Automation-Network"):(IsVoyagerTest()?TEXT("Voyager-Automation"):TEXT("Voyager-Expedition")));}
     void Tell(AController* C,const FString& Message){if(auto PC=Cast<AVoyagerController>(C))PC->Notify(Message);}
     FVector NorthSite(int32 System,int32 Planet,double X,double Y,double Height)
     {return Voyager::SurfacePoint(System,Planet,FVector(X,Y,Voyager::PlanetRadius(System,Planet)).GetSafeNormal(),Height);}
@@ -71,7 +72,16 @@ void AVoyagerGameMode::BeginPlay()
     if(State)State->PlanetIndex=ArrivalPlanet(State->SystemSeed,State->PlanetIndex);
     WorldBuilder=GetWorld()->SpawnActor<AVoyagerWorld>(FVector::ZeroVector,FRotator::ZeroRotator);
     GetWorld()->SpawnActor<AVoyagerLaw>();
+    if(auto CityLife=GetWorld()->SpawnActor<AVoyagerCityLife>())CityLife->RestoreFrom(LoadedSave);
     UE_LOG(LogTemp,Display,TEXT("VOYAGER READY system=%d planet=%d mode=%d"),State->SystemSeed,State->PlanetIndex,State->Mode);
+}
+void AVoyagerGameMode::EndPlay(const EEndPlayReason::Type Reason)
+{
+    bEndingPlay=true;
+    // Jobs own only copied state/bytes. Join the single writer before another world
+    // can create a newer save pipeline for the same slot.
+    PumpSave(true);
+    Super::EndPlay(Reason);
 }
 void AVoyagerGameMode::PreLogin(const FString& Options,const FString& Address,const FUniqueNetIdRepl& UniqueId,FString& ErrorMessage)
 {
@@ -140,7 +150,7 @@ AVoyagerShip* AVoyagerGameMode::ShipFor(AController* Pilot)
 }
 void AVoyagerGameMode::Logout(AController* Exiting)
 {
-    SaveExpedition();if(auto Found=Ships.Find(Exiting))if(IsValid(*Found))(*Found)->Destroy();Ships.Remove(Exiting);Super::Logout(Exiting);
+    SaveExpedition(true);if(auto Found=Ships.Find(Exiting))if(IsValid(*Found))(*Found)->Destroy();Ships.Remove(Exiting);Super::Logout(Exiting);
 }
 void AVoyagerGameMode::BoardShip(AVoyagerCharacter* Explorer)
 {
@@ -216,11 +226,18 @@ void AVoyagerGameMode::FinishTravel()
     }
     State->bTransitioning=false;State->TransitionTime=0;State->ForceNetUpdate();
     if(PendingMode==1&&!bPendingWarp)SpawnPirates();PirateTimer=90;
-    SaveExpedition();UE_LOG(LogTemp,Display,TEXT("VOYAGER ARRIVED system=%d planet=%d mode=%d"),State->SystemSeed,State->PlanetIndex,State->Mode);
+    SaveExpedition(true);UE_LOG(LogTemp,Display,TEXT("VOYAGER ARRIVED system=%d planet=%d mode=%d"),State->SystemSeed,State->PlanetIndex,State->Mode);
 }
 void AVoyagerGameMode::Tick(float D)
 {
-    Super::Tick(D);auto State=GetGameState<AVoyagerState>();if(!State)return;
+    Super::Tick(D);
+    PumpSave(false);
+    if(bSaveRequested&&!bEndingPlay&&!SaveEncoding.IsValid()&&!SaveWriting.IsValid()&&FPlatformTime::Seconds()>=NextAutosaveTime)
+    {
+        if(StartSave(false))bSaveRequested=false;
+        else NextAutosaveTime=FPlatformTime::Seconds()+.05;
+    }
+    auto State=GetGameState<AVoyagerState>();if(!State)return;
     if(State->bTransitioning){State->TransitionTime=FMath::Max(0.f,State->TransitionTime-D);if(State->TransitionTime<=0)FinishTravel();return;}
     for(FConstPlayerControllerIterator It=GetWorld()->GetPlayerControllerIterator();It;++It)
     {
@@ -267,17 +284,96 @@ void AVoyagerGameMode::UpgradeShip(AController* Pilot)
     if(Pilot->GetPawn()!=Ship&&(!Pilot->GetPawn()||FVector::Dist(Pilot->GetPawn()->GetActorLocation(),Ship->GetActorLocation())>1300)){Tell(Pilot,TEXT("Return to your ship to install an upgrade."));return;}
     PS->Minerals-=75;++PS->Upgrades;Ship->Hull=100;Ship->Shield=100;PS->ForceNetUpdate();Tell(Pilot,TEXT("Laser array upgraded. Hull and shields restored."));SaveExpedition();
 }
-void AVoyagerGameMode::SaveExpedition()
+bool AVoyagerGameMode::SaveExpedition(bool bImmediate,AVoyagerCityLife* SaveSource)
 {
-    auto State=GetGameState<AVoyagerState>();if(!State)return;auto Save=Cast<UVoyagerSave>(UGameplayStatics::CreateSaveGameObject(UVoyagerSave::StaticClass()));if(!Save)return;
-    Save->SystemSeed=State->SystemSeed;Save->PlanetIndex=State->PlanetIndex;
+    if(!HasAuthority())return false;
+    if(!bImmediate)
+    {
+        if(bEndingPlay)return false;
+        // A burst of extraction or purchases requests one fresh snapshot; later input
+        // during an in-flight save requests a subsequent snapshot instead of racing it.
+        if(!bSaveRequested)NextAutosaveTime=FPlatformTime::Seconds()+.25;
+        bSaveRequested=true;return true;
+    }
+    PumpSave(true);
+    bSaveRequested=false;
+    if(!StartSave(true,SaveSource)){bSaveRequested=true;return false;}
+    return PumpSave(true);
+}
+bool AVoyagerGameMode::StartSave(bool bWaitForCommands,AVoyagerCityLife* SaveSource)
+{
+    if(SaveEncoding.IsValid()||SaveWriting.IsValid())return false;
+    auto State=GetGameState<AVoyagerState>();if(!State)return false;
+    AVoyagerPlayerState* HostProgress=nullptr;
     for(FConstPlayerControllerIterator It=GetWorld()->GetPlayerControllerIterator();It;++It)
     {
-        auto PC=It->Get();if(!PC||!PC->IsLocalController())continue;
-        if(auto PS=PC->GetPlayerState<AVoyagerPlayerState>()){Save->Minerals=PS->Minerals;Save->PirateKills=PS->PirateKills;Save->Upgrades=PS->Upgrades;Save->Visited=PS->Visited;break;}
+        auto PC=It->Get();if(PC&&PC->IsLocalController())
+            if(auto PS=PC->GetPlayerState<AVoyagerPlayerState>()){HostProgress=PS;break;}
     }
-    const bool Saved=UGameplayStatics::SaveGameToSlot(Save,SaveSlot(),0);
-    UE_LOG(LogTemp,Display,TEXT("VOYAGER SAVE %s system=%d planet=%d minerals=%d discoveries=%d"),Saved?TEXT("PASS"):TEXT("FAIL"),Save->SystemSeed,Save->PlanetIndex,Save->Minerals,Save->Visited.Num());
+    if(!HostProgress&&!bHaveCapturedHost)return false;
+    auto Save=Cast<UVoyagerSave>(UGameplayStatics::CreateSaveGameObject(UVoyagerSave::StaticClass()));if(!Save)return false;
+    TUniqueFunction<TArray<FVoyagerCityArchive>()> Encode;
+    if(auto CityLife=SaveSource?SaveSource:AVoyagerCityLife::Find(GetWorld()))
+    {
+        if(!CityLife->TryPrepareSave(Save,Encode,bWaitForCommands))return false;
+    }
+    else return false; // Never overwrite persistent cities with a teardown/initialization gap.
+    // City command results/refunds were settled by TryPrepareSave. The game thread is
+    // the sole producer, so these cargo fields match the cloned city transaction boundary.
+    Save->SystemSeed=State->SystemSeed;Save->PlanetIndex=State->PlanetIndex;
+    if(HostProgress)
+    {
+        CapturedMinerals=HostProgress->Minerals;CapturedPirateKills=HostProgress->PirateKills;
+        CapturedUpgrades=HostProgress->Upgrades;CapturedVisited=HostProgress->Visited;bHaveCapturedHost=true;
+    }
+    Save->Minerals=CapturedMinerals;Save->PirateKills=CapturedPirateKills;
+    Save->Upgrades=CapturedUpgrades;Save->Visited=CapturedVisited;
+    PendingSave=Save;ActiveSaveSerial=++NextSaveSerial;ActiveSaveSlot=SaveSlot();
+    if(!bSaveSystemPrimed)
+    {
+        // Resolve the platform save module on the game thread. Subsequent worker IO
+        // uses its initialized byte-only API and cannot lazily load a module off-thread.
+        UGameplayStatics::DoesSaveGameExist(ActiveSaveSlot,0);bSaveSystemPrimed=true;
+    }
+    SaveEncoding=Async(EAsyncExecution::ThreadPool,[Encode=MoveTemp(Encode)]() mutable {return Encode();});
+    return true;
+}
+bool AVoyagerGameMode::PumpSave(bool bWait)
+{
+    if(SaveEncoding.IsValid())
+    {
+        if(!bWait&&!SaveEncoding.IsReady())return false;
+        if(bWait)SaveEncoding.Wait();
+        PendingSave->CityArchives=SaveEncoding.Consume();
+        TArray<uint8> Bytes;
+        const double Started=FPlatformTime::Seconds();
+        const bool Serialized=UGameplayStatics::SaveGameToMemory(PendingSave,Bytes);
+        UE_LOG(LogTemp,Display,TEXT("VOYAGER SAVE SERIALIZE serial=%llu bytes=%d serialize_gt_ms=%.3f"),ActiveSaveSerial,Bytes.Num(),(FPlatformTime::Seconds()-Started)*1000.0);
+        if(!Serialized)
+        {
+            UE_LOG(LogTemp,Error,TEXT("VOYAGER SAVE FAIL serialization serial=%llu"),ActiveSaveSerial);
+            PendingSave=nullptr;bSaveRequested=true;NextAutosaveTime=FPlatformTime::Seconds()+2;return false;
+        }
+        const FString Slot=ActiveSaveSlot;
+        // Match Unreal's save-game serialization but write immutable bytes on a
+        // joinable worker. No callback requires the game thread while an explicit
+        // save/quit waits, and no UObject is accessed by this job.
+        SaveWriting=Async(EAsyncExecution::ThreadPool,[Bytes=MoveTemp(Bytes),Slot]() {return UGameplayStatics::SaveDataToSlot(Bytes,Slot,0);});
+    }
+    if(SaveWriting.IsValid())
+    {
+        if(!bWait&&!SaveWriting.IsReady())return false;
+        if(bWait)SaveWriting.Wait();
+        const bool Saved=SaveWriting.Consume();
+        if(Saved)
+        {
+            check(ActiveSaveSerial>LastWrittenSaveSerial);LastWrittenSaveSerial=ActiveSaveSerial;
+        }
+        else {bSaveRequested=true;NextAutosaveTime=FPlatformTime::Seconds()+2;}
+        UE_LOG(LogTemp,Display,TEXT("VOYAGER SAVE %s system=%d planet=%d minerals=%d discoveries=%d serial=%llu slot=%s"),Saved?TEXT("PASS"):TEXT("FAIL"),PendingSave->SystemSeed,PendingSave->PlanetIndex,PendingSave->Minerals,PendingSave->Visited.Num(),ActiveSaveSerial,*ActiveSaveSlot);
+        PendingSave=nullptr;return Saved;
+    }
+    return true;
 }
 
 void AVoyagerGameMode::RecoverExplorer(AVoyagerCharacter* Explorer)
@@ -292,5 +388,6 @@ void AVoyagerGameMode::RecoverExplorer(AVoyagerCharacter* Explorer)
     const FVector Rescue=Voyager::SurfacePoint(State->SystemSeed,Planet,Up,130.f)+Frame.Vector()*900+FRotationMatrix(Frame).GetScaledAxis(EAxis::Y)*450;
     Explorer->SetActorLocationAndRotation(Rescue,Frame,false,nullptr,ETeleportType::TeleportPhysics);
     Explorer->Health=100.f;Explorer->ForceNetUpdate();
+    if(auto Life=AVoyagerCityLife::Find(GetWorld()))Life->RecoverPlayer(C);
     Tell(C,TEXT("RESCUED / Emergency medics restored your suit. Local pursuit ended; cargo preserved."));
 }

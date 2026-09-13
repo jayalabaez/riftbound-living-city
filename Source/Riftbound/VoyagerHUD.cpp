@@ -147,7 +147,7 @@ void AVoyagerHUD::DrawHUD()
     Text(FString::Printf(TEXT("%03d"), Expedition ? Expedition->Discoveries : 0), Right + 157, 65, 1.16f, Mint);
     Text(TEXT("MINERALS"), Right + 17, 102, .48f, Muted);
     Text(TEXT("DISCOVERIES"), Right + 158, 102, .48f, Muted);
-    Text(TEXT("ESC  FLIGHT MANUAL     F5  SAVE"), Right + 3, 142, .53f, Muted);
+    Text(TEXT("P  CITY PHONE   /   ESC  MANUAL   /   F5  SAVE"), Right + 3, 142, .46f, Muted);
 
     if(Expedition&&Expedition->WantedStars>0)
     {
@@ -453,7 +453,7 @@ void AVoyagerHUD::DrawHUD()
         Panel(CX - 360, VH - 226, 720, 52);
         Center(PC->Notice, CX, VH - 210, .69f, White, 684);
     }
-    const FString Footer = Ship ? TEXT("WASD  THRUST     MOUSE  STEER     SHIFT  BOOST     SPACE / CTRL  VERTICAL     LMB  FIRE") : TEXT("WASD  MOVE     MOUSE  LOOK     SHIFT  SPRINT     SPACE  JUMP     E  INTERACT     F  SCAN");
+    const FString Footer = Ship ? TEXT("WASD  THRUST     MOUSE  STEER     SHIFT  BOOST     SPACE / CTRL  VERTICAL     LMB  FIRE") : TEXT("WASD MOVE   MOUSE LOOK   SHIFT SPRINT   SPACE JUMP   E INTERACT   F SCAN   P PHONE   N CITY GUIDE");
     Center(Footer, CX, VH - 27, .48f, Muted);
 
     if (Ship && Ship->DamageFeedback > 0)
@@ -464,6 +464,9 @@ void AVoyagerHUD::DrawHUD()
         Rect(0, 0, 5, VH, DamageTint);
         Rect(VW - 5, 0, 5, VH, DamageTint);
     }
+
+    if(PC->bCityPhoneVisible)DrawCityPhone(PC);
+    else DrawCityGuide(PC);
 
     if (State->bTransitioning)
     {

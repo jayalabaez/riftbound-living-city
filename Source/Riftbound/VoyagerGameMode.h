@@ -4,6 +4,8 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/SaveGame.h"
+#include "Async/Future.h"
+#include "VoyagerCityLife.h"
 #include "VoyagerGameMode.generated.h"
 class AVoyagerCharacter;
 class AVoyagerShip;
@@ -50,7 +52,9 @@ class RIFTBOUND_API UVoyagerSave : public USaveGame
 {
     GENERATED_BODY()
 public:
-    UPROPERTY() int32 Version=2;
+    UPROPERTY() int32 Version=3;
+    UPROPERTY() TArray<FVoyagerCityArchive> CityArchives;
+    UPROPERTY() TArray<int32> CityResidentLocations;
     UPROPERTY() int32 SystemSeed=1;
     UPROPERTY() int32 PlanetIndex=0;
     UPROPERTY() int32 Minerals=0;
@@ -67,6 +71,7 @@ public:
     AVoyagerGameMode();
     virtual void InitGame(const FString& MapName,const FString& Options,FString& ErrorMessage) override;
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     virtual void Tick(float DeltaSeconds) override;
     virtual void PostLogin(APlayerController* NewPlayer) override;
     virtual void Logout(AController* Exiting) override;
@@ -80,12 +85,13 @@ public:
     void NextSystem(AController* Pilot);
     void RecoverShip(AVoyagerShip* Ship);
     void RecoverExplorer(AVoyagerCharacter* Explorer);
-    void SaveExpedition();
+    bool SaveExpedition(bool bImmediate=false,AVoyagerCityLife* SaveSource=nullptr);
     void UpgradeShip(AController* Pilot);
     AVoyagerShip* ShipFor(AController* Pilot);
 private:
     UPROPERTY() TObjectPtr<AVoyagerWorld> WorldBuilder;
     UPROPERTY() TObjectPtr<UVoyagerSave> LoadedSave;
+    UPROPERTY() TObjectPtr<UVoyagerSave> PendingSave;
     UPROPERTY() TMap<TObjectPtr<AController>,TObjectPtr<AVoyagerShip>> Ships;
     UPROPERTY() TArray<TObjectPtr<AActor>> Starts;
     int32 StartIndex=0;
@@ -93,6 +99,19 @@ private:
     bool bPendingWarp=false;
     bool bLoadedHost=false;
     float PirateTimer=2.f;
+    TFuture<TArray<FVoyagerCityArchive>> SaveEncoding;
+    TFuture<bool> SaveWriting;
+    bool bSaveRequested=false,bEndingPlay=false,bSaveSystemPrimed=false;
+    double NextAutosaveTime=0;
+    uint64 NextSaveSerial=0,ActiveSaveSerial=0,LastWrittenSaveSerial=0;
+    FString ActiveSaveSlot;
+    // Map travel destroys the local controller before city EndPlay. Keep only the
+    // last settled expedition fields so that final city snapshots retain its cargo.
+    bool bHaveCapturedHost=false;
+    int32 CapturedMinerals=0,CapturedPirateKills=0,CapturedUpgrades=0;
+    TArray<int64> CapturedVisited;
+    bool StartSave(bool bWaitForCommands,AVoyagerCityLife* SaveSource=nullptr);
+    bool PumpSave(bool bWait);
     void BeginTravel(int32 Mode,int32 System,int32 Planet,const FString& Label,float Duration,bool WarpOnly=false);
     void FinishTravel();
     void SpawnPirates();

@@ -2,6 +2,8 @@
 #include "VoyagerGameMode.h"
 #include "VoyagerCharacter.h"
 #include "VoyagerShip.h"
+#include "VoyagerCitizen.h"
+#include "VoyagerCityLife.h"
 #include "VoyagerData.h"
 #include "RiftVisual.h"
 #include "RiftCharacter.h"
@@ -18,11 +20,35 @@ int32 AVoyagerLaw::StarsForHeat(float H) { return H>=330?5:H>=210?4:H>=120?3:H>=
 AVoyagerLaw::AVoyagerLaw() { PrimaryActorTick.bCanEverTick=true;PrimaryActorTick.TickInterval=.5f; }
 AVoyagerLaw* AVoyagerLaw::Find(const UWorld* World)
 { for(TActorIterator<AVoyagerLaw> It(World);It;++It)return *It;return nullptr; }
-void AVoyagerLaw::ReportCrime(AController* C,const FVector& Position,int32 Severity,const FString& Description)
+void AVoyagerLaw::ReportCrime(AController* C,const FVector& Position,int32 Severity,const FString& Description,AActor* Witness)
 {
     if(!HasAuthority()||!C||Severity<=0)return;
     auto PS=C->GetPlayerState<AVoyagerPlayerState>();auto State=GetWorld()->GetGameState<AVoyagerState>();
     if(!PS||!State||State->bTransitioning)return;
+    APawn* Suspect=C->GetPawn();if(!Suspect)return;
+    auto Observes=[&](AActor* Observer)
+    {
+        if(!Observer)return false;
+        const FVector Eye=Observer->GetActorLocation()+Voyager::SurfaceNormal(State->SystemSeed,Voyager::NearestPlanet(State->SystemSeed,Position),Position)*155.f;
+        if(FVector::DistSquared(Eye,Suspect->GetPawnViewLocation())>FMath::Square(125000.))return false;
+        FHitResult Hit;FCollisionQueryParams Query(SCENE_QUERY_STAT(CityCrimeWitness),false,Observer);Query.AddIgnoredActor(Suspect);
+        for(int32 Pane=0;Pane<16;++Pane)
+        {
+            if(!GetWorld()->LineTraceSingleByChannel(Hit,Eye,Suspect->GetPawnViewLocation(),ECC_Visibility,Query))return true;
+            auto Component=Hit.GetComponent();if(!Component||!Component->ComponentHasTag(TEXT("VoyagerGlass")))return false;
+            Query.AddIgnoredComponent(Component);
+        }
+        return false;
+    };
+    // An injured citizen or patrol can supply its own observed report. Otherwise a
+    // live witness must see the suspect; opaque geometry blocks identification.
+    bool bObserved=Observes(Witness);
+    if(!bObserved)for(TActorIterator<AVoyagerCitizen> It(GetWorld());It;++It)
+        if(It->IsAlive()&&FVector::DistSquared(It->GetActorLocation(),Position)<FMath::Square(25000.)&&Observes(*It)){bObserved=true;break;}
+    if(!bObserved)for(TActorIterator<AVoyagerPatrolShip> It(GetWorld());It;++It)
+        if(It->Hull>0&&It->CanSee(Suspect)){bObserved=true;break;}
+    if(!bObserved)return;
+    if(auto Life=AVoyagerCityLife::Find(GetWorld()))Life->RecordCrime(C,Severity,900);
     const float Now=GetWorld()->GetTimeSeconds();
     PS->CrimeHeat=FMath::Min(400.f,PS->CrimeHeat+Severity);PS->WantedStars=StarsForHeat(PS->CrimeHeat);
     PS->LastKnownPosition=C->GetPawn()?C->GetPawn()->GetActorLocation():Position;
@@ -176,7 +202,7 @@ float AVoyagerPatrolShip::TakeDamage(float Damage,const FDamageEvent& Event,ACon
 {
     if(!HasAuthority()||Hull<=0||!FMath::IsFinite(Damage)||Damage<=0)return 0;
     const float Applied=FMath::Min(Hull,Damage);Hull-=Applied;ForceNetUpdate();
-    if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->ReportCrime(DamageInstigator,GetActorLocation(),Hull<=0?110:35,Hull<=0?TEXT("patrol destroyed"):TEXT("attack on patrol"));
+    if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->ReportCrime(DamageInstigator,GetActorLocation(),Hull<=0?110:35,Hull<=0?TEXT("patrol destroyed"):TEXT("attack on patrol"),this);
     if(Hull<=0){SetActorEnableCollision(false);DestructionEffect();SetLifeSpan(.2f);}
     return Applied;
 }

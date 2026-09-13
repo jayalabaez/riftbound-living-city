@@ -8,6 +8,7 @@
 #include "../../../Sim/src/core/Core.cpp"
 #include "../../../Sim/src/core/Events.cpp"
 #include "../../../Sim/src/economy/Economy.cpp"
+#include "../../../Sim/src/sim/PlanetaryCity.cpp"
 #include "../../../Sim/src/sim/Replay.cpp"
 #include "../../../Sim/src/sim/Sim.cpp"
 #include "../../../Sim/src/sim/Snapshot.cpp"

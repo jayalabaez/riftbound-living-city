@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
+#include "VoyagerCityLife.h"
 #include "VoyagerCharacter.generated.h"
 class UCameraComponent;
 class UAudioComponent;
@@ -69,6 +70,17 @@ public:
     virtual void SetupInputComponent() override;
     void ToggleMenu();
     bool bMenuVisible=false;
+    bool bCityPhoneVisible=false;
+    int32 CityPhonePage=0;
+    int32 CityGuideTarget=1;
+    UPROPERTY() FVoyagerCityLifeView CityLifeView;
+    void ToggleCityPhone();
+    void CityPhonePreviousPage();
+    void CityPhoneNextPage();
+    void CityPhoneAction(int32 Number);
+    void CycleCityGuide();
+    UFUNCTION(Client,Reliable) void ClientReceiveCityLife(const FVoyagerCityLifeView& View);
+    UFUNCTION(Server,Reliable) void ServerCityAction(uint8 Action,int32 Argument);
     FString Notice;
     float NoticeTime=0;
     UFUNCTION(Client,Reliable) void Notify(const FString& Message);
@@ -89,6 +101,13 @@ private:
     void TalkLife();
     void TalkDirections();
     void CloseConversation();
+    void CityPhoneFour();
+    void CityPhoneFive();
+    void CityPhoneSix();
+    void CityPhoneSeven();
+    void CityPhoneEight();
+    void CloseCityPhone();
+    TWeakObjectPtr<APawn> CityPhonePawn;
     float TestTime=0;
     float StageStarted=0;
     int32 TestStage=0;

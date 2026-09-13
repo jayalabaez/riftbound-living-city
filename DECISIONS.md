@@ -4,6 +4,9 @@ Append-only log. What was chosen, what was rejected, and why.
 Each entry is `DECIDED` (settled, change requires a new entry) or `OPEN` (waiting on the
 project owner — do not start work that depends on it).
 
+Current integration boundary: **D-030** supersedes the alongside-only restrictions in
+D-000 and D-029. Historical entries below retain their original wording.
+
 ---
 
 ## D-000 — Engine and host project — DECIDED — 2026-09-09
@@ -766,3 +769,44 @@ Publication starts with a clean source snapshot while prior Git history stays lo
 The old history contains save backups and an Android File Server development token;
 neither belongs in the public repository. Android File Server is disabled, audio provenance
 paths are relative, and personal saves and backups are ignored.
+
+## D-030 — Put a bounded Living City economy into Voyager — DECIDED — 2026-09-13
+
+The owner now explicitly requests that the Living City brief be added **to Riftbound**.
+This supersedes the alongside-only choice in D-029 and CLAUDE section 9. Voyager's natural
+art, enterable cities, seamless planetary flight, combat and co-op remain the game being
+extended. The original Living City mode remains available independently.
+
+**Chosen:** add `Riftbound` → `LivingCitySim` as a one-way dependency. A pure `PlanetaryCity`
+core consumes Voyager's existing 60-building settlement layouts. Fifteen instances maintain
+3,600 named resident records each, including reserved player resident slots. Each has a real
+home, explicit employment status, account, inventory, nine needs and legal state. A 20 Hz
+worker advances the core. Nearby actors execute its utility goals on the existing street
+and doorway graph and report real arrivals; statistical residents retain the same records.
+The current visual budget remains 36 residents per city and 72 globally, not 54,000 meshes.
+
+The playable slice adds eight market goods, inventory-based prices, transfer-based wages
+and taxes, rent and utility bills, consumption and recycling, mineral sales, and citations
+connected to the existing wanted patrols. A keyboard city phone exposes authoritative
+balances, needs, jobs, home, justice and factual bulletins. Residents and the player use the
+same core accounts, action validation, needs and health rules. Existing optional Ollama
+dialogue can vary truthful authored speech; it does not operate the economy or NPC utility AI.
+
+**Persistence choice:** preserve resident identity, money, inventory, needs and records when
+moving between settlement accounts. Assign valid local housing and employment on arrival.
+This is not a property-ownership or mortgage simulation. The seed plus city deltas are saved
+inside the expedition save; terrain remains Voyager's existing generated surface.
+
+**Rejected:** coupling Voyager to `LivingCityGame` or loading its separate world behind the
+planet scene. That would create two presentation owners and two unrelated cities, rather
+than giving the existing streets an economy. Also rejected was claiming that enabling Mass,
+ZoneGraph or StateTree completes traffic, crowds or behavior assets. Existing Unreal 5.8.2
+facilities are sufficient for this bounded integration; no paid or third-party plugin is
+required. The core remains independently buildable and testable through the direct MSVC
+`Scripts/Build-Sim.ps1` workflow established in D-010; there is no CMake project.
+
+**Scope:** full MassCrowd/Traffic representation, road vehicles and transit, mortgages,
+eviction, courts and jail, destructible voxel terrain, hydrology and economic disasters
+remain future work. The original brief is the roadmap, not the release checklist.
+Validation and measured timings for this integration are tracked separately in
+`docs/phases/VOYAGER_CITY_LIFE.md`; pending checks must not be reported as passed.

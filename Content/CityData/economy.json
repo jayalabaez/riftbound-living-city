@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "populationPerCity": 3600,
+  "ticksPerMinute": 20,
+  "startMinute": 540,
+  "initialCitizenCashMinor": 20000,
+  "hourlyWageMinor": 1800,
+  "dailyRentMinor": 900,
+  "dailyUtilitiesMinor": 180,
+  "salesTaxBasisPoints": 1000,
+  "incomeTaxBasisPoints": 1000,
+  "basePricesMinor": [500, 150, 800, 350, 1200, 900, 3500, 1800],
+  "goods": ["Food", "Water", "Fuel", "Raw materials", "Building materials", "Consumer goods", "Electronics", "Medicine"]
+}

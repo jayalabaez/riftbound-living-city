@@ -24,7 +24,7 @@ public:
     AVoyagerLaw();
     virtual void Tick(float DeltaSeconds) override;
     static AVoyagerLaw* Find(const UWorld* World);
-    void ReportCrime(AController* Offender,const FVector& Position,int32 Severity,const FString& Description);
+    void ReportCrime(AController* Offender,const FVector& Position,int32 Severity,const FString& Description,AActor* Witness=nullptr);
     void Contact(AController* Offender,const FVector& Position);
     void Resolve(AController* Offender,bool bNotify=true);
     int32 PatrolCount(AController* Offender) const;

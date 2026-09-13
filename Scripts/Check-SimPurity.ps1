@@ -13,7 +13,7 @@
       I12  no Chaos or Mass symbol reaches sim state
       R3   no float/double, no wall-clock, and no unordered-container iteration in the sim
       A3   the internal layer DAG holds - no cycles, no upward dependencies
-      A2   Riftbound and LivingCity* modules never reference each other
+      A2   Riftbound may consume pure LivingCitySim, never its standalone presentation modules
 
     Exit code 0 = clean, 1 = violations found.
 
@@ -194,8 +194,8 @@ if (Test-Path $SourceDir) {
     foreach ($f in $BuildCs) {
         $text = Get-Content -Raw $f.FullName -ErrorAction SilentlyContinue
         if (-not $text) { continue }
-        if ($f.Name -like 'Riftbound*' -and $text -match 'LivingCity') {
-            Add-Violation -Rule 'ARCH2' -File $f.FullName -Line 0 -Detail 'Riftbound module references a LivingCity module'
+        if ($f.Name -like 'Riftbound*' -and $text -match '"LivingCity(Game|Editor)"') {
+            Add-Violation -Rule 'ARCH2' -File $f.FullName -Line 0 -Detail 'Riftbound may consume LivingCitySim only; standalone game/editor modules remain separate'
         }
         if ($f.Name -like 'LivingCity*' -and $text -match '"Riftbound"') {
             Add-Violation -Rule 'ARCH2' -File $f.FullName -Line 0 -Detail 'LivingCity module references the Riftbound module'

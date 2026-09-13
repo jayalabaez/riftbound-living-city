@@ -7,8 +7,10 @@ dependency points**. A dependency that points the wrong way is a bug, not a styl
 
 ## 1. Repository layout
 
-LIVING CITY is built inside the existing `Riftbound.uproject`. New paths are marked **NEW**.
-Everything unmarked already exists and belongs to RIFTBOUND — do not touch it.
+LIVING CITY and Voyager share `Riftbound.uproject`. The original tree below records the
+initial module split. Since the owner's 2026-09-13 integration request, Voyager also uses
+the pure simulation module through its own city adapter; its gameplay files may be edited.
+The separate Living City presentation remains independent. See D-030.
 
 ```
 GameProject/                          repo root, Unreal project root
@@ -25,9 +27,9 @@ GameProject/                          repo root, Unreal project root
 │  └─ phases/PHASE_0.md ... PHASE_9.md
 │
 ├─ Sim/                               NEW  the pure C++ core — no Unreal anywhere below here
-│  ├─ CMakeLists.txt                  standalone build: headless exe + test exe
+│  ├─ build/<Config>/                standalone MSVC output: headless exe + test exe
 │  ├─ include/livingcity/             public headers
-│  ├─ src/                            implementation, compiled by BOTH CMake and UBT (D-005)
+│  ├─ src/                            implementation, compiled by standalone MSVC and UBT
 │  │  ├─ core/        rng, fixed-point, time, ids, containers, event bus, hashing, logging
 │  │  ├─ world/       chunk store, voxel, generation, hydrology, minerals
 │  │  ├─ agents/      SoA store, needs, utility scoring, planning, LOD tiers
@@ -41,7 +43,7 @@ GameProject/                          repo root, Unreal project root
 │  └─ tests/          invariant tests (I1–I13)
 │
 ├─ Source/
-│  ├─ Riftbound/                      EXISTING — legacy, untouched
+│  ├─ Riftbound/                      Voyager runtime, including VoyagerCityLife adapter/UI
 │  ├─ LivingCitySim/                  NEW  UBT wrapper that compiles Sim/src (D-005)
 │  ├─ LivingCityGame/                 NEW  Unreal runtime: rendering, input, view sync
 │  ├─ LivingCityEditor/               NEW  editor-only tools, commandlets, validators
@@ -51,13 +53,14 @@ GameProject/                          repo root, Unreal project root
 ├─ Data/                              NEW  ALL tunable game data. CSV/JSON only (R6).
 │  ├─ goods.csv  materials.csv  jobs.csv  laws.csv  fines.csv  vehicles.csv
 │
-├─ Content/                           art only (R6)
-│  ├─ (existing Riftbound content)    do not touch
+├─ Content/                           binary files are art only (R6)
+│  ├─ CityData/economy.json           reviewable planetary tunables, staged as text
+│  ├─ (existing Riftbound content)    natural terrain, characters, ships and interiors
 │  └─ LivingCity/                     NEW  meshes, materials, UI widgets
 │
 ├─ Scripts/                           EXISTING, extended
 │  ├─ Build.ps1  Package.ps1  Play.ps1  Test-*.ps1   RIFTBOUND's — do not repurpose
-│  ├─ Build-Sim.ps1                   NEW  CMake configure + build + test
+│  ├─ Build-Sim.ps1                   direct cl.exe build of headless and invariant binaries
 │  └─ Check-SimPurity.ps1             NEW  enforces I2, I8, I9, I12
 │
 └─ .github/workflows/ci.yml           NEW  builds Sim, runs invariant tests, runs replay
@@ -65,7 +68,8 @@ GameProject/                          repo root, Unreal project root
 
 **Why `Sim/` sits outside `Source/`.** `Source/` is UBT's territory; anything there is an Unreal
 module by convention. Putting the pure core outside makes R1 visible in the directory tree
-itself, and lets CMake own it without UBT interference. `Source/LivingCitySim/` is a thin
+itself, and lets the standalone MSVC script build it without UBT interference. There is no
+`Sim/CMakeLists.txt`; D-010 supersedes the original CMake plan. `Source/LivingCitySim/` is a thin
 `.Build.cs` that points UBT at `Sim/src`.
 
 ---
@@ -97,7 +101,7 @@ Arrows mean **"depends on"**. There are no arrows in the other direction, ever.
                      └───────────────────────┘
 
 ┌───────────────┐
-│   Riftbound   │   EXISTING, legacy. No arrow to or from any LivingCity module.
+│   Riftbound   │──→ LivingCitySim only; its own VoyagerCityLife presentation boundary.
 └───────────────┘
 ```
 
@@ -108,7 +112,7 @@ Arrows mean **"depends on"**. There are no arrows in the other direction, ever.
 | `Sim/tests` | `LivingCitySim` | Unreal |
 | `LivingCityGame` | `LivingCitySim`, Engine, MassEntity, Mass* (behind our interfaces), StateTree, PCG, Chaos, mesh component | `Riftbound`, `UnrealEd` |
 | `LivingCityEditor` | `LivingCityGame`, `LivingCitySim`, `UnrealEd` | `Riftbound` |
-| `Riftbound` | its existing dependencies | any `LivingCity*` module |
+| `Riftbound` | its existing dependencies, `LivingCitySim` | `LivingCityGame`, `LivingCityEditor` |
 
 ### The two boundaries that matter most
 
@@ -125,6 +129,52 @@ Arrows mean **"depends on"**. There are no arrows in the other direction, ever.
 **Boundary 2 — sim → worker threads.** Worker threads receive pure inputs and return pure
 outputs (R10). Results are consumed in **job index order**, never completion order. Meshing, LLM
 calls, and file IO live entirely on this side and can never write sim state.
+
+### Voyager's planetary adapter
+
+`PlanetaryCity` under `Sim/include/livingcity/sim` and `Sim/src/sim` is a second pure core entry point tailored to Voyager's already
+generated spherical settlements. It receives 60 real building indices per city, so homes,
+jobs and shops refer to the same doors the player can enter. Fifteen city instances keep
+54,000 resident records. The game advances them at a fixed 20 Hz on one dedicated worker.
+The original `LivingCityGame` simulation subsystem is not started in Voyager mode.
+
+`Source/Riftbound/VoyagerCityLife.cpp` owns the worker boundary, ordered command queue,
+save archives and validated player actions. Its worker may mutate pure city state; it may
+not access actors. Read-only views copy state under the host lock. The current adapter does
+not use the original mode's triple-buffered snapshot ring; lock time and save duration are
+part of the integration's measured budget.
+
+`VoyagerCitizen` represents only the nearby embodied population. Utility goals originate
+in `PlanetaryCity`; actors execute existing street/doorway routes and report observed
+presence. Embodied residents cannot complete abstract travel while their actor is still
+outside. Demotion changes representation, not identity, money, inventory, needs or death.
+Player input uses the same core command, account, need and health paths as residents.
+The phone receives authoritative views by RPC and never authors account balances.
+
+Planetary tunables are plain `Content/CityData/economy.json`, staged through
+`DirectoriesToAlwaysStageAsUFS`; `.uasset` files hold no economy configuration. City save
+archives contain deterministic seed/configuration and state deltas, with no untouched
+planet terrain. Resident relocation transfers possessions and legal/need state while
+assigning a home and job from the destination's actual buildings; it is not persistent
+ownership of properties across planets.
+
+Autosaves coalesce requests over a short window and allow one encode/write sequence at a
+time. `TryPrepareSave` checks the command batch, drains its results and clones the city
+cores under the same lock; trade refunds settle before expedition cargo is captured.
+The returned encoder owns those copies and historical archives, with no actor references.
+Background jobs encode city deltas and write immutable save bytes. Unreal's save-object
+serialization remains on the game thread. Explicit saves and teardown join pending jobs;
+serial numbers preserve write order so an older snapshot cannot overwrite a newer one.
+Capture/clone, encode and game-thread serialization timings are logged separately.
+
+The latest archive wrapper encodes compressed city deltas into the additive `PackedState`
+string field, avoiding reflected serialization of each byte in a large array. Packing uses
+bounded zlib data with a size header and base64 transport in the background encoder.
+The production decoder retains support for legacy `State` byte arrays and rejects invalid
+packed payloads. Final editor and standalone integration audits verify production decoding,
+corruption rejection, resident persistence and teardown cargo preservation. Fifteen measured
+standalone saves averaged 1.422 ms for game-thread cloning, 2.982 ms for Unreal serialization
+and 85.142 ms for background encoding. Full ranges and coverage are in the integration checklist.
 
 ---
 
@@ -201,7 +251,7 @@ Boundaries that are only written down get violated. These run in CI on every com
 | Player-path grep | I8 | fails on `bIsPlayer` or `isPlayer` anywhere under `Sim/` |
 | IO grep | I9 | fails on `fopen`, `ifstream`, `ofstream`, `curl`, `socket` outside the injected IO interface |
 | Include-graph test | §3 layering | parses `#include` lines under `Sim/src`, asserts the layer DAG and reports any cycle |
-| Module-reference test | §2 table | parses every `.Build.cs`, asserts `Riftbound` and `LivingCity*` never reference each other |
+| Module-reference test | §2 table | allows `Riftbound` → `LivingCitySim`; rejects dependencies between `Riftbound` and the Living City game/editor modules, and any reverse core dependency |
 | Determinism replay | I1 | headless run, two seeds, checkpoint hashes compared |
 
 `Check-SimPurity.ps1` greps `.cpp`/`.h` only, never `.Build.cs` — see D-005 for why

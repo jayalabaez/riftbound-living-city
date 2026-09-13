@@ -1,6 +1,6 @@
 # RIFTBOUND: VOYAGER
 
-An original procedural space-adventure prototype in Unreal Engine 5.8.2. Explore spherical worlds with textured terrain, alien wildlife, cloud layers, and procedural cities. Mine crystals, discover planets, pilot your own ship, fight corsairs, and fly continuously between five planets per star system. Generate another system whenever you want a new destination.
+An original procedural space-adventure prototype in Unreal Engine 5.8.2. Explore spherical worlds with textured terrain, alien wildlife, cloud layers, and procedural cities. Mine crystals, discover planets, pilot your own ship, fight corsairs, and fly continuously between five planets per star system. Planetary cities now have persistent residents, needs, jobs, shops and accounts. Generate another system whenever you want a new destination.
 
 **[Build from source](BUILDING.md)** using Git LFS and Unreal Engine 5.8. This project also contains the separate **[Living City](LIVINGCITY.md)** simulation mode.
 
@@ -22,7 +22,13 @@ On foot: **WASD** move, **Shift** sprint, **Space** jump. In flight: **Space** r
 
 Follow the settlement marker to the first city, about **320 m** from the landing site. All **60 buildings** have furnished occupied floors, glazed windows, open doors, and connected stairs to every level and the roof. Residents use clothed skeletal character meshes and animated walks, commute, work, visit cafes and react to nearby weapon fire. Look toward someone nearby and press **E** to talk; **1–3** choose topics and **Backspace** ends the conversation. Watch animals graze outside the city. Each biome has its own city palette and animal species.
 
-**V** switches the extraction tool to a pulse sidearm; **left mouse** fires. Attacking residents or patrols raises a **one-to-five-star wanted level**. Patrol ships respond, pursue visible suspects and search the last observed position when sight is lost. Hide behind opaque building walls or escape in your ship until the search ends. See [character credits](Art/Characters/PROVENANCE.md) and [ship sources](Art/Ships/PROVENANCE.md).
+**P** opens the city phone. Use **Left/Right** to change pages and **1–8** for the displayed actions; **P**, **Escape** or **Backspace** closes it. Buy supplies inside a cafe or market, eat and drink from your bag, apply for a job at a workplace, work there for wages, rest at your home, pay bills, recycle waste, or sell ten mined minerals for city credits. Credits and expedition minerals are separate inventories. The phone also shows needs, your real home and employer, outstanding fines, and news from the city accounts. The world keeps running while you use it.
+
+On foot near a city, **N** cycles entrance guidance for your **home**, **workplace**, the nearest **market**, **Civic Security**, and **off**. The marker shows the building and distance, with an arrow when its entrance is outside your view. You can also cycle it with **8** on the phone's Work & Home page.
+
+The simulation keeps **54,000 resident records** across the system's 15 cities, including offscreen residents. The visible population remains bounded to **36 per nearby city, 72 globally**. Moving residents retain their identity, possessions and needs; local home/job assignments refer to actual buildings. This is a bounded integration of the Living City brief, not a claim that traffic, transit, courts, mortgages or voxel disasters are implemented. See the [integration checklist](docs/phases/VOYAGER_CITY_LIFE.md) for validation status and remaining scope.
+
+**V** switches the extraction tool to a pulse sidearm; **left mouse** fires. Reported attacks on residents or patrols raise a **one-to-five-star wanted level** and city citations. Patrol ships respond, pursue visible suspects and search the last observed position when sight is lost. Hide behind opaque building walls or escape in your ship until the search ends; outstanding fines remain in the city account and can be paid at Civic Security. See [character credits](Art/Characters/PROVENANCE.md) and [ship sources](Art/Ships/PROVENANCE.md).
 
 These original worlds have **600–900 km radii**, with radial gravity and procedural terrain. Ascent, atmospheric entry, and interplanetary cruise happen in the same world without a loading transition. Travel to another star system still uses a short jump transition.
 

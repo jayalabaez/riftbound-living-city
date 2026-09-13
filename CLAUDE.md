@@ -114,7 +114,7 @@ order, never completion order). Meshing, LLM calls, and IO never write sim state
 
 **R11 — Compile-time discipline.**
 Unreal C++ iteration is slow; protect it. Lean headers, forward declarations, and keep the sim
-core buildable without Unreal so most logic work happens in a sub-second CMake loop rather than
+core buildable without Unreal so most logic work happens in a standalone compiler loop rather than
 a multi-minute UBT loop. Report build times when they regress.
 
 ---
@@ -266,12 +266,28 @@ Build in this order. Do not reorder.
 
 ## 9. Coexistence with RIFTBOUND
 
-This repository already contains **RIFTBOUND: VOYAGER**, a working UE 5.8 project
-(`Riftbound.uproject`, module `Riftbound`, launchers in `Scripts/`). LIVING CITY is being built
-**alongside** it in the same Unreal project, as new modules.
+**Current work: Voyager City Life, 2026-09-13.** The owner explicitly requested that the
+attached Living City brief be added **into Riftbound**. This supersedes the previous
+alongside-only restriction and the prohibition on editing Voyager. The original standalone
+Living City mode remains available; it does not run behind Voyager.
 
-- Do not modify, refactor, or delete anything under `Source/Riftbound/`, the existing `Content/`
-  assets, `SURVIVAL.md`, `VOYAGER.md`, or the existing `Scripts/*.ps1` and `*.cmd` launchers.
-- `README.md` belongs to Riftbound. LIVING CITY documentation lives in `CLAUDE.md` and `docs/`.
-- **No module dependency in either direction** between `Riftbound` and any `LivingCity*` module.
-  They share the engine, the `.uproject`, and nothing else.
+- `Riftbound` may depend on the pure `LivingCitySim` module. Neither `Riftbound` nor the core
+  may depend on `LivingCityGame` or `LivingCityEditor`. The two presentation modes remain
+  independent. No reverse dependency from the core to any Unreal gameplay module is allowed.
+- `Sim/include/livingcity/sim/PlanetaryCity.h` and its implementation own the planetary
+  resident, needs, economy and citation rules. `AVoyagerCityLife` supplies ordered commands
+  to a worker and exposes read-only state for NPC routes, the phone and multiplayer clients.
+- The current integration uses 15 cities with 3,600 persistent residents each: **54,000
+  simulated records**, with at most 36 embodied citizens per nearby city and 72 globally.
+  These are separate quantities. Do not report 54,000 rendered characters or claim that
+  the larger Mass crowd, traffic, vehicle, court or disaster phases are complete.
+- Voyager's natural art, spherical terrain, ship flight and existing accessible buildings
+  remain its presentation. The attached flat-shaded capsule art direction does not replace
+  the owner's newer realism request.
+- Current milestone and verification checklist: [VOYAGER_CITY_LIFE.md](docs/phases/VOYAGER_CITY_LIFE.md).
+  Earlier `PHASE_*.md` files describe the separate Living City mode and historical milestones;
+  they are not evidence that their entire roadmap is implemented in Voyager.
+
+All core purity, deterministic stepping, money conservation, data transparency and measured
+performance rules above still apply. Tunable planetary data lives as reviewable JSON under
+`Content/CityData`, staged as text; binary Unreal assets remain art.

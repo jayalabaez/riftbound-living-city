@@ -244,32 +244,42 @@ void AVoyagerController::UpdateRotation(float D)
     Forward=FQuat(Right,-FMath::DegreesToRadians(PitchDelta)).RotateVector(Forward);
     const FRotator View=FRotationMatrix::MakeFromXZ(Forward,Up).Rotator();SetControlRotation(View);Explorer->FaceRotation(View,D);
 }
-void AVoyagerController::EndPlay(const EEndPlayReason::Type R){UVoyagerLocalAI::CancelConversation(this);HideMenu();Super::EndPlay(R);}
+void AVoyagerController::EndPlay(const EEndPlayReason::Type R){UVoyagerLocalAI::CancelConversation(this);CloseCityPhone();HideMenu();Super::EndPlay(R);}
 void AVoyagerController::SetupInputComponent()
 {
     Super::SetupInputComponent();InputComponent->BindAction("Menu",IE_Pressed,this,&AVoyagerController::ToggleMenu);InputComponent->BindAction("Save",IE_Pressed,this,&AVoyagerController::SaveInput);InputComponent->BindAction("Upgrade",IE_Pressed,this,&AVoyagerController::UpgradeInput);
+    InputComponent->BindKey(EKeys::P,IE_Pressed,this,&AVoyagerController::ToggleCityPhone);
+    InputComponent->BindKey(EKeys::N,IE_Pressed,this,&AVoyagerController::CycleCityGuide);
+    InputComponent->BindKey(EKeys::Left,IE_Pressed,this,&AVoyagerController::CityPhonePreviousPage);
+    InputComponent->BindKey(EKeys::Right,IE_Pressed,this,&AVoyagerController::CityPhoneNextPage);
     InputComponent->BindKey(EKeys::One,IE_Pressed,this,&AVoyagerController::TalkGreeting);
     InputComponent->BindKey(EKeys::Two,IE_Pressed,this,&AVoyagerController::TalkLife);
     InputComponent->BindKey(EKeys::Three,IE_Pressed,this,&AVoyagerController::TalkDirections);
+    InputComponent->BindKey(EKeys::Four,IE_Pressed,this,&AVoyagerController::CityPhoneFour);
+    InputComponent->BindKey(EKeys::Five,IE_Pressed,this,&AVoyagerController::CityPhoneFive);
+    InputComponent->BindKey(EKeys::Six,IE_Pressed,this,&AVoyagerController::CityPhoneSix);
+    InputComponent->BindKey(EKeys::Seven,IE_Pressed,this,&AVoyagerController::CityPhoneSeven);
+    InputComponent->BindKey(EKeys::Eight,IE_Pressed,this,&AVoyagerController::CityPhoneEight);
     InputComponent->BindKey(EKeys::BackSpace,IE_Pressed,this,&AVoyagerController::CloseConversation);
 }
 void AVoyagerController::Notify_Implementation(const FString& Message){Notice=Message;NoticeTime=8.f;}
 void AVoyagerController::ShowConversation_Implementation(AVoyagerCitizen* Citizen,const FString& Speech)
 {ConversationTarget=Citizen;ConversationSpeech=Speech;ConversationTime=20.f;UVoyagerLocalAI::EnrichConversation(this,Citizen,Speech);}
-void AVoyagerController::TalkGreeting(){if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(0);}
-void AVoyagerController::TalkLife(){if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(1);}
-void AVoyagerController::TalkDirections(){if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(2);}
+void AVoyagerController::TalkGreeting(){if(bCityPhoneVisible){CityPhoneAction(1);return;}if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(0);}
+void AVoyagerController::TalkLife(){if(bCityPhoneVisible){CityPhoneAction(2);return;}if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(1);}
+void AVoyagerController::TalkDirections(){if(bCityPhoneVisible){CityPhoneAction(3);return;}if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(2);}
 void AVoyagerController::CloseConversation()
 {
+    if(bCityPhoneVisible){CloseCityPhone();return;}
     UVoyagerLocalAI::CancelConversation(this);
     if(ConversationTarget.IsValid())if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerEndTalk();
     ConversationTime=0;ConversationTarget.Reset();ConversationSpeech.Empty();
 }
 void AVoyagerController::SaveInput(){ServerSave();}
-void AVoyagerController::UpgradeInput(){ServerUpgrade();}
-void AVoyagerController::ServerSave_Implementation(){if(auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>()){GM->SaveExpedition();Notify(TEXT("Expedition saved. Continue from this planet next time."));}}
+void AVoyagerController::UpgradeInput(){if(!bCityPhoneVisible)ServerUpgrade();}
+void AVoyagerController::ServerSave_Implementation(){if(auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())Notify(GM->SaveExpedition(true)?TEXT("Expedition saved. Continue from this planet next time."):TEXT("The expedition could not be saved. Please try again."));}
 void AVoyagerController::ServerUpgrade_Implementation(){if(auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())GM->UpgradeShip(this);}
-void AVoyagerController::ToggleMenu(){if(bMenuVisible)HideMenu();else ShowMenu();}
+void AVoyagerController::ToggleMenu(){if(bCityPhoneVisible){CloseCityPhone();return;}if(bMenuVisible)HideMenu();else ShowMenu();}
 void AVoyagerController::HideMenu()
 {
     if(MenuWidget.IsValid()&&GEngine&&GEngine->GameViewport)GEngine->GameViewport->RemoveViewportWidgetContent(MenuWidget.ToSharedRef());
@@ -292,7 +302,7 @@ void AVoyagerController::ShowMenu()
       +SVerticalBox::Slot().AutoHeight().Padding(0,14,0,4)[Label(TEXT("Join a host IP  /  shared star system  /  up to 4 players"),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SAssignNew(AddressBox,SEditableTextBox).Text(FText::FromString(TEXT("127.0.0.1"))).Font(FCoreStyle::GetDefaultFontStyle("Regular",16))]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){FString Address=AddressBox->GetText().ToString().TrimStartAndEnd();bool Valid=!Address.IsEmpty();for(TCHAR C:Address)if(!FChar::IsAlnum(C)&&C!=TEXT('.')&&C!=TEXT(':')&&C!=TEXT('-'))Valid=false;if(Valid){HideMenu();ClientTravel(Address,TRAVEL_Absolute);}return FReply::Handled();})[Label(TEXT("CONNECT TO EXPEDITION"),14)]]
-      +SVerticalBox::Slot().AutoHeight().Padding(0,18,0,6)[Label(TEXT("ON FOOT  WASD move / F scan / LMB mine / E talk or board / C camera\nCITY  Walk through signed doors / 1-3 dialogue / Backspace end\nFLIGHT  WASD thrust / mouse steer / Space rise / Ctrl descend\nShift boost / LMB lasers / E land below 10 m or exit\nSPACE above 60 km / Tab target / J cruise / H next star\nFly directly into or out of the atmosphere."),11)]
+      +SVerticalBox::Slot().AutoHeight().Padding(0,18,0,6)[Label(TEXT("ON FOOT  WASD move / F scan / LMB mine / V sidearm / E interact\nCITY  P phone / arrows pages / 1-8 actions / P or Esc close\nWalk through signed doors / 1-3 dialogue / Backspace end\nFLIGHT  WASD thrust / mouse steer / Space rise / Ctrl descend\nShift boost / LMB lasers / E land below 10 m or exit\nSPACE above 60 km / Tab target / J cruise / H next star\nFly directly into or out of the atmosphere."),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(10).OnClicked_Lambda([this](){ServerSave();ConsoleCommand(TEXT("quit"));return FReply::Handled();})[Label(TEXT("SAVE AND QUIT"),13)]]
     ]];
     MenuWidget=SNew(SVoyagerMenu).OnClose_Lambda([this](){HideMenu();})[Content];GEngine->GameViewport->AddViewportWidgetContent(MenuWidget.ToSharedRef(),100);
@@ -301,6 +311,7 @@ void AVoyagerController::ShowMenu()
 void AVoyagerController::Tick(float D)
 {
     Super::Tick(D);NoticeTime=FMath::Max(0.f,NoticeTime-D);
+    if(bCityPhoneVisible&&(GetPawn()!=CityPhonePawn.Get()||!GetPawn()))CloseCityPhone();
     ConversationTime=FMath::Max(0.f,ConversationTime-D);
     if(ConversationTime>0&&(!ConversationTarget.IsValid()||!ConversationTarget->IsAlive()||!Cast<AVoyagerCharacter>(GetPawn())||
         FVector::DistSquared(GetPawn()->GetActorLocation(),ConversationTarget->GetActorLocation())>500.0*500.0))CloseConversation();
@@ -343,7 +354,23 @@ void AVoyagerController::RunProbe(float D)
     if(!Auto||TestStage>=20)return;
     auto Advance=[this](){++TestStage;StageStarted=TestTime;};
     auto Pass=[](const TCHAR* Label){UE_LOG(LogTemp,Display,TEXT("VOYAGER TEST PASS %s"),Label);};
-    auto Fail=[this](const TCHAR* Label){UE_LOG(LogTemp,Error,TEXT("VOYAGER TEST FAIL %s stage=%d"),Label,TestStage);TestStage=99;};
+    auto Fail=[this](const TCHAR* Label)
+    {
+        if(auto* Character=Cast<AVoyagerCharacter>(GetPawn()))
+        {
+            const auto* Movement=Character->GetCharacterMovement();
+            UE_LOG(LogTemp,Error,TEXT("VOYAGER WALK DIAGNOSTIC label=%s elapsed=%.3f distance_cm=%.3f health=%.1f role=%d local=%d controller=%d acknowledged=%d ignore_move=%d menu=%d phone=%d movement=%d active=%d ground=%d max_speed=%.1f start=%s pos=%s velocity=%s acceleration=%s pending=%s floor=%s"),
+                Label,TestTime-StageStarted,FVector::Dist(TestStart,Character->GetActorLocation()),Character->Health,int(Character->GetLocalRole()),Character->IsLocallyControlled(),Character->GetController()==this,AcknowledgedPawn==Character,IsMoveInputIgnored(),bMenuVisible,bCityPhoneVisible,
+                int(Movement->MovementMode),Movement->IsActive(),Movement->IsMovingOnGround(),Movement->MaxWalkSpeed,*TestStart.ToString(),*Character->GetActorLocation().ToString(),*Character->GetVelocity().ToString(),*Movement->GetCurrentAcceleration().ToString(),*Character->GetPendingMovementInputVector().ToString(),*GetNameSafe(Movement->CurrentFloor.HitResult.GetComponent()));
+            FHitResult Obstacle;FCollisionQueryParams Query(SCENE_QUERY_STAT(VoyagerWalkProbe),false,Character);
+            const FVector Start=Character->GetActorLocation();
+            const bool Blocked=GetWorld()->SweepSingleByChannel(Obstacle,Start,Start+Character->GetActorForwardVector()*400,Character->GetActorQuat(),ECC_Pawn,
+                FCollisionShape::MakeCapsule(Character->GetCapsuleComponent()->GetScaledCapsuleRadius(),Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()),Query);
+            UE_LOG(LogTemp,Error,TEXT("VOYAGER WALK COLLISION blocked=%d penetrating=%d depth_cm=%.3f distance_cm=%.3f actor=%s component=%s normal=%s"),
+                Blocked,Obstacle.bStartPenetrating,Obstacle.PenetrationDepth,Obstacle.Distance,*GetNameSafe(Obstacle.GetActor()),*GetNameSafe(Obstacle.GetComponent()),*Obstacle.ImpactNormal.ToString());
+        }
+        UE_LOG(LogTemp,Error,TEXT("VOYAGER TEST FAIL %s stage=%d"),Label,TestStage);TestStage=99;
+    };
     auto Capture=[this](int32 Bit){if(!(TestCaptures&Bit)&&FParse::Param(FCommandLine::Get(),TEXT("VoyagerCapture"))){TestCaptures|=Bit;ConsoleCommand(TEXT("HighResShot 1"));}};
     const float Elapsed=TestTime-StageStarted;
     if(Elapsed>150){Fail(TEXT("TIMEOUT"));return;}
@@ -422,7 +449,18 @@ void AVoyagerController::RunProbe(float D)
             Ship->ServerInteract();Advance();
         }
     }
-    else if(TestStage==8&&Explorer){Pass(TEXT("DISEMBARK"));Explorer->ServerScan();TestStart=Explorer->GetActorLocation();Capture(16);Advance();}
+    else if(TestStage==8&&Explorer)
+    {
+        // A replicated pawn pointer can arrive before ClientRestart and its walking
+        // floor are ready. Start the unchanged walking measurement only after actual
+        // local possession and ground movement are established; a stuck setup still
+        // fails the existing stage timeout rather than receiving extra movement retries.
+        const auto* Movement=Explorer->GetCharacterMovement();
+        if(!Explorer->IsLocallyControlled()||Explorer->GetController()!=this||AcknowledgedPawn!=Explorer||
+            !Movement->IsActive()||!Movement->IsMovingOnGround()||IsMoveInputIgnored())return;
+        UE_LOG(LogTemp,Display,TEXT("VOYAGER WALK READY stage=8 role=%d health=%.1f pos=%s floor=%s"),int(Explorer->GetLocalRole()),Explorer->Health,*Explorer->GetActorLocation().ToString(),*GetNameSafe(Movement->CurrentFloor.HitResult.GetComponent()));
+        Pass(TEXT("DISEMBARK"));Explorer->ServerScan();TestStart=Explorer->GetActorLocation();Capture(16);Advance();
+    }
     else if(TestStage==9&&Explorer)
     {
         if(Elapsed<.6f)Explorer->AddMovementInput(Explorer->GetActorForwardVector(),1);
@@ -617,6 +655,7 @@ float AVoyagerCharacter::TakeDamage(float Damage,const FDamageEvent& Event,ACont
     if(!HasAuthority()||Health<=0||!FMath::IsFinite(Damage)||Damage<=0)return 0;
     auto State=GetWorld()->GetGameState<AVoyagerState>();if(State&&State->bTransitioning)return 0;
     const float Applied=FMath::Min(Health,Damage);Health-=Applied;ForceNetUpdate();
+    if(auto Life=AVoyagerCityLife::Find(GetWorld()))Life->ApplyPlayerDamage(Controller,FMath::RoundToInt(Health));
     if(Health<=0)if(auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())GM->RecoverExplorer(this);
     return Applied;
 }

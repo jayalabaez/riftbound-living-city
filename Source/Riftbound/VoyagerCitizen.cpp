@@ -1,4 +1,5 @@
 #include "VoyagerCitizen.h"
+#include "VoyagerCityLife.h"
 #include "VoyagerLaw.h"
 #include "VoyagerData.h"
 #include "VoyagerGameMode.h"
@@ -15,13 +16,38 @@
 
 namespace
 {
-    enum ECitizenActivity : uint8 { Commute,Work,Eat,Rest,Patrol,Social,Investigate,Shelter,Talk };
+    enum ECitizenActivity : uint8 { Commute,Work,Eat,Rest,Patrol,Social,Investigate,Shelter,Talk,Shop,Medical };
+    // Snapshot values at the Unreal boundary; utility scoring remains in the core.
+    enum ECityLifeActivity : int32 { LifeHome,LifeWorking,LifeShopping,LifeResting,LifeSocializing,LifeSeekingCare,LifeDead };
     constexpr int32 StreetNodes=81;
     constexpr int32 NodesPerBuilding=4; // Street, ramp lip, inside doorway, room center.
     int32 BuildingNode(int32 Building,int32 Offset=3) { return StreetNodes+Building*NodesPerBuilding+Offset; }
     bool IsStreetNode(int32 Node) { return Node<StreetNodes||(Node-StreetNodes)%NodesPerBuilding==0; }
-
-
+    int32 RoleForWorkplace(int32 Workplace,int32 Ordinal)
+    {
+        if(Workplace<0)return 0;
+        switch(Workplace%6)
+        {
+            case 1:return 3; // Clinic.
+            case 2:return Ordinal%2==0?2:5; // Market counter or deliveries.
+            case 3:return 1; // Workshop.
+            case 5:return 4; // Civic security.
+            default:return 0;
+        }
+    }
+    FString CreditsText(int64 Minor)
+    {
+        return FString::Printf(TEXT("%lld.%02lld credits"),Minor/100,FMath::Abs(Minor%100));
+    }
+    FString NeedSummary(const TArray<int32>& Needs)
+    {
+        static const TCHAR* Concerns[]={TEXT("I could use something to eat."),TEXT("I need a drink of water."),TEXT("I could use a wash."),TEXT("I need some sleep."),TEXT("I'm not feeling well; I need to visit the clinic."),TEXT("I'm running low on energy."),TEXT("I could use some company."),TEXT("I don't feel safe out here."),TEXT("I need somewhere comfortable to rest.")};
+        int32 Highest=INDEX_NONE;
+        for(int32 I=0;I<FMath::Min(Needs.Num(),9);++I)if(Highest==INDEX_NONE||Needs[I]>Needs[Highest])Highest=I;
+        if(Highest==INDEX_NONE)return TEXT("I'm taking things as they come.");
+        if(Needs[Highest]<250)return TEXT("My needs are in good shape.");
+        return Concerns[Highest];
+    }
 }
 
 AVoyagerCitizen::AVoyagerCitizen()
@@ -47,6 +73,13 @@ void AVoyagerCitizen::InitializeCitizen(int32 System,int32 Planet,int32 Site,int
     Random.Initialize(Identity.Seed);Identity.Scale=Random.FRandRange(.94f,1.06f);
     Identity.Home=BuildingForRole(4,Ordinal);const int32 WorkplaceRoles[]={0,3,2,1,5,2};
     Identity.Workplace=BuildingForRole(WorkplaceRoles[Identity.Role],Ordinal/6);
+    CityLife=AVoyagerCityLife::Find(GetWorld());
+    FVoyagerCitizenLifeView Life;
+    if(CityLife.IsValid()&&CityLife->GetCitizen(System,Planet,Site,Ordinal,Life)&&Life.bReady)
+    {
+        Identity.Home=Life.Home;Identity.Workplace=Life.Workplace;Identity.Role=RoleForWorkplace(Life.Workplace,Ordinal);Health=Life.bAlive?float(Life.Health):0.f;
+        bCityLifeBound=true;CityLife->SetEmbodied(System,Planet,Site,Ordinal,true);
+    }
     Identity.bInitialized=true;BuildNavigation();CurrentNode=FMath::Clamp(StartNode,0,Navigation.Num()-1);
     PathPosition=Navigation[CurrentNode].Position;SetActorLocation(PathPosition);
     Pose.Location=PathPosition;Pose.Rotation=GetActorRotation();Pose.ServerTime=float(SynchronizedTime());
@@ -57,6 +90,11 @@ void AVoyagerCitizen::InitializeCitizen(int32 System,int32 Planet,int32 Site,int
         Pose.Building=(CurrentNode-StreetNodes)/NodesPerBuilding;
         ArrivalActivity=Pose.Activity=Work;IdleRemaining=Random.FRandRange(18.f,30.f);
     }
+    if(bCityLifeBound)
+    {
+        ReportedBuilding=Pose.Building;
+        CityLife->ReportPresence(System,Planet,Site,Ordinal,Pose.Building);
+    }
     if(HasActorBegunPlay())BuildVisuals();ForceNetUpdate();
 }
 
@@ -64,6 +102,14 @@ void AVoyagerCitizen::BeginPlay()
 {
     Super::BeginPlay();VisualRoot->SetWorldLocationAndRotation(GetActorLocation(),GetActorQuat());
     if(Identity.bInitialized)BuildVisuals();
+    if(HasAuthority()&&!IsAlive())FinishDeath();
+}
+
+void AVoyagerCitizen::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    if(HasAuthority()&&bCityLifeBound&&CityLife.IsValid())
+        CityLife->SetEmbodied(Identity.System,Identity.Planet,Identity.Site,Identity.Ordinal,false);
+    Super::EndPlay(EndPlayReason);
 }
 
 void AVoyagerCitizen::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -97,14 +143,15 @@ FString AVoyagerCitizen::DisplayName() const
 FString AVoyagerCitizen::RoleName() const
 {
     static const TCHAR* Roles[]={TEXT("Resident"),TEXT("Engineer"),TEXT("Trader"),TEXT("Medic"),TEXT("City guard"),TEXT("Courier")};
+    if(Identity.Role==0&&Identity.Workplace>=0&&Identity.Workplace%6==0)return TEXT("Cafe worker");
     return Roles[FMath::Clamp(Identity.Role,0,5)];
 }
 
 FString AVoyagerCitizen::ActivityName() const
 {
     if(!IsAlive())return TEXT("Deceased");
-    static const TCHAR* Activities[]={TEXT("Walking to next stop"),TEXT("On shift"),TEXT("Taking a meal break"),TEXT("At home"),TEXT("Patrolling the district"),TEXT("Taking a break"),TEXT("Investigating a disturbance"),TEXT("Seeking shelter"),TEXT("Speaking with you")};
-    return Activities[FMath::Clamp(int32(Pose.Activity),0,8)];
+    static const TCHAR* Activities[]={TEXT("Walking to next stop"),TEXT("On shift"),TEXT("Taking a meal break"),TEXT("At home"),TEXT("Patrolling the district"),TEXT("Taking a break"),TEXT("Investigating a disturbance"),TEXT("Seeking shelter"),TEXT("Speaking with you"),TEXT("Buying supplies"),TEXT("Seeking medical care")};
+    return Activities[FMath::Clamp(int32(Pose.Activity),0,10)];
 }
 
 int32 AVoyagerCitizen::BuildingForRole(int32 DesiredRole,int32 Variation) const
@@ -185,6 +232,29 @@ void AVoyagerCitizen::RouteTo(int32 DestinationNode,uint8 FinalActivity)
 
 void AVoyagerCitizen::ChooseActivity()
 {
+    if(bCityLifeBound&&CityLife.IsValid())
+    {
+        FVoyagerCitizenLifeView Life;
+        if(!CityLife->GetCitizen(Identity.System,Identity.Planet,Identity.Site,Identity.Ordinal,Life)||!Life.bReady)return;
+        if(!Life.bAlive)return;
+        CoreGoalBuilding=Life.GoalBuilding;CoreActivity=Life.Activity;
+        uint8 NextActivity=Rest;
+        switch(Life.Activity)
+        {
+            case LifeWorking:NextActivity=Work;break;
+            case LifeShopping:NextActivity=Shop;break;
+            case LifeSocializing:NextActivity=Social;break;
+            case LifeSeekingCare:NextActivity=Medical;break;
+            default:break;
+        }
+        if(Life.GoalBuilding>=0&&Life.GoalBuilding<AVoyagerSettlement::BuildingCount())
+            RouteTo(BuildingNode(Life.GoalBuilding),NextActivity);
+        else if(Life.Activity==LifeSocializing)
+            RouteTo(2+(Identity.Ordinal%5)+(2+(Identity.Ordinal/5)%5)*9,Social);
+        else if(Identity.Home>=0&&Identity.Home<AVoyagerSettlement::BuildingCount())
+            RouteTo(BuildingNode(Identity.Home),Rest);
+        return;
+    }
     const float Hour=AVoyagerCitizenManager::CityHour(GetWorld());
     if(Hour>=22.f||Hour<6.f)
     {
@@ -208,6 +278,37 @@ void AVoyagerCitizen::ChooseActivity()
     RouteTo(BuildingNode(Identity.Workplace),Work);
 }
 
+void AVoyagerCitizen::RefreshCityLife()
+{
+    if(!bCityLifeBound||!CityLife.IsValid()||!IsAlive())return;
+    FVoyagerCitizenLifeView Life;
+    if(!CityLife->GetCitizen(Identity.System,Identity.Planet,Identity.Site,Identity.Ordinal,Life)||!Life.bReady)return;
+    bool Changed=Identity.Home!=Life.Home||Identity.Workplace!=Life.Workplace;
+    Identity.Home=Life.Home;Identity.Workplace=Life.Workplace;
+    const int32 Occupation=RoleForWorkplace(Life.Workplace,Identity.Ordinal);
+    if(Identity.Role!=Occupation){Identity.Role=Occupation;Changed=true;if(HasActorBegunPlay())BuildVisuals();}
+    int32 NextHealth=Life.bAlive?FMath::Clamp(Life.Health,0,100):0;
+    // The worker snapshot may precede the damage command by one publish. Never
+    // let that older snapshot undo a hit while waiting for the core to acknowledge it.
+    if(PendingCoreHealth!=INDEX_NONE)
+    {
+        if(NextHealth<=PendingCoreHealth)PendingCoreHealth=INDEX_NONE;
+        else NextHealth=FMath::Min(NextHealth,PendingCoreHealth);
+    }
+    if(Health!=float(NextHealth)){Health=float(NextHealth);Changed=true;}
+    if(!IsAlive())FinishDeath();
+    else if(!Pose.bAlarmed&&!ConversationPartner.IsValid()&&(CoreGoalBuilding!=Life.GoalBuilding||CoreActivity!=Life.Activity))
+        ChooseActivity();
+    if(Changed)ForceNetUpdate();
+}
+
+void AVoyagerCitizen::ReportCityPresence()
+{
+    if(!bCityLifeBound||!CityLife.IsValid()||Pose.Building==ReportedBuilding)return;
+    ReportedBuilding=Pose.Building;
+    CityLife->ReportPresence(Identity.System,Identity.Planet,Identity.Site,Identity.Ordinal,ReportedBuilding);
+}
+
 FString AVoyagerCitizen::TalkTo(APawn* Player,int32 Topic)
 {
     if(!IsAlive())return FString();
@@ -223,6 +324,31 @@ FString AVoyagerCitizen::TalkTo(APawn* Player,int32 Topic)
     LastTalkTime=Time;ConversationPartner=Player;ConversationUntil=Time+20.f;Pose.Activity=Talk;Pose.Velocity=FVector::ZeroVector;ForceNetUpdate();
     if(Pose.bAlarmed)
         return Identity.Role==4?TEXT("I heard a disturbance. Keep your weapon lowered while I check the street. Everyone else should move inside."):TEXT("That noise put everyone on edge. I'm heading indoors until the street is quiet. Please keep your weapon lowered.");
+    FVoyagerCitizenLifeView Life;
+    if(bCityLifeBound&&CityLife.IsValid()&&CityLife->GetCitizen(Identity.System,Identity.Planet,Identity.Site,Identity.Ordinal,Life)&&Life.bReady)
+    {
+        FVoyagerBuildingInfo Home,Workplace;
+        const bool HasHome=AVoyagerSettlement::GetBuildingInfo(Identity.System,Identity.Planet,Identity.Site,Life.Home,Home);
+        const bool HasWork=AVoyagerSettlement::GetBuildingInfo(Identity.System,Identity.Planet,Identity.Site,Life.Workplace,Workplace);
+        if(Topic==0)
+            return FString::Printf(TEXT("Hello, I'm %s. My home is %s. I have %s in my account. %s"),*DisplayName(),HasHome?*Home.Name:TEXT("awaiting an address"),*CreditsText(Life.MoneyMinor),*NeedSummary(Life.Needs));
+        if(Topic==1)
+        {
+            const FString Employment=HasWork
+                ?FString::Printf(TEXT("I work at %s, from %02d:00 to %02d:00. Pay is earned while I am actually there."),*Workplace.Name,Life.ShiftStart,Life.ShiftEnd)
+                :TEXT("I'm currently unemployed and looking for a workplace.");
+            const FString Legal=Life.FineMinor>0?FString::Printf(TEXT(" I owe %s in court fines."),*CreditsText(Life.FineMinor)):TEXT("");
+            return FString::Printf(TEXT("%s I live at %s. My current balance is %s.%s"),*Employment,HasHome?*Home.Name:TEXT("an unassigned address"),*CreditsText(Life.MoneyMinor),*Legal);
+        }
+        FVoyagerBuildingInfo Destination;
+        const int32 Building=Life.GoalBuilding>=0?Life.GoalBuilding:Life.Home;
+        if(AVoyagerSettlement::GetBuildingInfo(Identity.System,Identity.Planet,Identity.Site,Building,Destination))
+        {
+            const double Distance=FVector::Dist(Player->GetActorLocation(),Destination.DoorOutside)/100.0;
+            return FString::Printf(TEXT("My next stop is %s, about %.0f meters away. Follow the street and enter through the open door. The stairs reach all %d floors and the roof. %s"),*Destination.Name,Distance,Destination.FloorCount,*NeedSummary(Life.Needs));
+        }
+        return FString::Printf(TEXT("I'm taking a break near the square. %s"),*NeedSummary(Life.Needs));
+    }
     if(Topic==0)
     {
         static const TCHAR* Greetings[]={TEXT("Welcome. I live here, just off the square. The cafes and market are open; walk through any marked entrance."),TEXT("Hello, traveler. I keep this district's equipment running. I'm between the workshop and my next maintenance stop."),TEXT("A new face! I work at the market. Come inside and have a look around; the street doors are open."),TEXT("Good to see you on your feet. I'm one of the medics here. The clinic is open if you need a quiet place to rest."),TEXT("Welcome to the district. You're free to explore the buildings. Please keep mining tools and ship fire away from the streets."),TEXT("Hello! I'm making deliveries around the district. These ramps lead straight into the buildings. Mind the people at the doors.")};
@@ -279,6 +405,12 @@ void AVoyagerCitizen::Simulate(float D)
     if(!Identity.bInitialized||!IsAlive())return;
     const auto State=GetWorld()->GetGameState<AVoyagerState>();
     if(!State||State->SystemSeed!=Identity.System||State->bTransitioning)return;
+    CityLifeRefreshRemaining-=D;
+    if(CityLifeRefreshRemaining<=0.f)
+    {
+        CityLifeRefreshRemaining=.8f+float(Identity.Ordinal%5)*.04f;
+        RefreshCityLife();if(!IsAlive())return;
+    }
     const float Time=float(SynchronizedTime());const FVector Position=PathPosition;
     const FVector Up=Voyager::SurfaceNormal(Identity.System,Identity.Planet,Position);
     if(Pose.bAlarmed&&Time>=AlarmUntil)
@@ -363,6 +495,7 @@ void AVoyagerCitizen::Simulate(float D)
         NewPosition=Destination;CurrentNode=NextNode;++RouteCursor;
         if(CurrentNode>=StreetNodes&&(CurrentNode-StreetNodes)%NodesPerBuilding>=2)Pose.Building=(CurrentNode-StreetNodes)/NodesPerBuilding;
         else if(IsStreetNode(CurrentNode))Pose.Building=INDEX_NONE;
+        ReportCityPresence();
         if(!Route.IsValidIndex(RouteCursor))
         {
             Pose.Activity=ArrivalActivity;
@@ -429,6 +562,7 @@ void AVoyagerCitizenManager::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 float AVoyagerCitizenManager::CityHour(const UWorld* World)
 {
     if(!World)return 8.f;
+    if(const auto Life=AVoyagerCityLife::Find(World))return Life->CityHour();
     const auto State=World->GetGameState<AVoyagerState>();
     const double Time=State?State->GetServerWorldTimeSeconds():World->GetTimeSeconds();
     return float(FMath::Fmod(8.0+Time/60.0,24.0));
@@ -465,9 +599,24 @@ void AVoyagerCitizenManager::UpdateCounts()
 bool AVoyagerCitizenManager::SpawnCitizen(int32 Planet,int32 Site)
 {
     if(Citizens.Num()>=MaximumPopulation)return false;
+    auto Life=AVoyagerCityLife::Find(GetWorld());
+    if(Life&&!Life->IsReady())return false;
     TSet<int32> Ordinals;
     for(auto Citizen:Citizens)if(IsValid(Citizen)&&Citizen->PlanetIndex()==Planet&&Citizen->SiteIndex()==Site)Ordinals.Add(Citizen->OrdinalIndex());
-    int32 Ordinal=0;while(Ordinals.Contains(Ordinal)||DeadCitizens.Contains((Planet*AVoyagerSettlement::SitesPerPlanet+Site)*CitizensPerCity+Ordinal))++Ordinal;if(Ordinal>=CitizensPerCity)return false;
+    int32 Ordinal=0;
+    while(Ordinal<CitizensPerCity&&(Ordinals.Contains(Ordinal)||DeadCitizens.Contains((Planet*AVoyagerSettlement::SitesPerPlanet+Site)*CitizensPerCity+Ordinal)
+        ||(Life&&!Life->IsCitizenAlive(ActiveSystem,Planet,Site,Ordinal))))++Ordinal;
+    if(Ordinal>=CitizensPerCity)return false;
+    if(Life)
+    {
+        FVoyagerCitizenLifeView Resident;
+        if(!Life->GetCitizen(ActiveSystem,Planet,Site,Ordinal,Resident)||!Resident.bReady)return false;
+        if(Resident.Home<0||Resident.Home>=AVoyagerSettlement::BuildingCount())
+        {
+            UE_LOG(LogTemp,Error,TEXT("VOYAGER CITY LIFE INVALID HOME system=%d planet=%d site=%d citizen=%d home=%d"),ActiveSystem,Planet,Site,Ordinal,Resident.Home);
+            return false;
+        }
+    }
     FRandomStream Seed(int32(Voyager::Hash(uint32(Voyager::PlanetSeed(ActiveSystem,Planet))^uint32(Site*7717+Ordinal*104729+5371))&0x7fffffff));
     int32 StartNode=Seed.RandRange(1,7)+Seed.RandRange(1,7)*9;
     FVector Position=AVoyagerSettlement::StreetPoint(ActiveSystem,Planet,Site,StartNode%9,StartNode/9,20.f);
@@ -557,16 +706,25 @@ float AVoyagerCitizen::TakeDamage(float Damage,const FDamageEvent& Event,AContro
     if(!HasAuthority()||!IsAlive()||!FMath::IsFinite(Damage)||Damage<=0)return 0.f;
     if(auto State=GetWorld()->GetGameState<AVoyagerState>())if(State->bTransitioning)return 0.f;
     const float Applied=FMath::Min(Health,Damage);Health-=Applied;
-    ConversationPartner.Reset();ConversationUntil=0;
-    if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->ReportCrime(DamageInstigator,GetActorLocation(),IsAlive()?20:100,IsAlive()?TEXT("assault on resident"):TEXT("resident killed"));
-    if(IsAlive())NotifyDisturbance(Causer?Causer->GetActorLocation():GetActorLocation());
-    else
+    if(bCityLifeBound&&CityLife.IsValid())
     {
-        DeathTime=float(SynchronizedTime());Pose.Velocity=FVector::ZeroVector;Pose.bAlarmed=false;Route.Empty();Pose.ServerTime=DeathTime;
-        OnRep_Health();SetLifeSpan(90.f);
-        for(TActorIterator<AVoyagerCitizenManager> It(GetWorld());It;++It){It->RecordDeath(this);It->ReportDisturbance(GetActorLocation());}
+        PendingCoreHealth=FMath::Clamp(FMath::CeilToInt(Health),0,100);
+        CityLife->ApplyCitizenDamage(Identity.System,Identity.Planet,Identity.Site,Identity.Ordinal,PendingCoreHealth);
     }
+    ConversationPartner.Reset();ConversationUntil=0;
+    if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->ReportCrime(DamageInstigator,GetActorLocation(),IsAlive()?20:100,IsAlive()?TEXT("assault on resident"):TEXT("resident killed"),this);
+    if(IsAlive())NotifyDisturbance(Causer?Causer->GetActorLocation():GetActorLocation());
+    else FinishDeath();
     ForceNetUpdate();return Applied;
+}
+
+void AVoyagerCitizen::FinishDeath()
+{
+    if(DeathTime>0.f)return;
+    ConversationPartner.Reset();ConversationUntil=0.f;
+    DeathTime=FMath::Max(.001f,float(SynchronizedTime()));Pose.Velocity=FVector::ZeroVector;Pose.bAlarmed=false;Route.Empty();Pose.ServerTime=DeathTime;
+    OnRep_Health();SetLifeSpan(90.f);
+    for(TActorIterator<AVoyagerCitizenManager> It(GetWorld());It;++It){It->RecordDeath(this);It->ReportDisturbance(GetActorLocation());}
 }
 void AVoyagerCitizenManager::RecordDeath(const AVoyagerCitizen* Citizen)
 {

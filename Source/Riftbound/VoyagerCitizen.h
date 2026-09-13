@@ -9,6 +9,7 @@ class UStaticMeshComponent;
 class UCapsuleComponent;
 class USkeletalMeshComponent;
 class UAnimationAsset;
+class AVoyagerCityLife;
 
 USTRUCT()
 struct FVoyagerCitizenIdentity
@@ -55,6 +56,7 @@ class RIFTBOUND_API AVoyagerCitizen : public AActor
 public:
     AVoyagerCitizen();
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void Tick(float DeltaSeconds) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     virtual FVector GetVelocity() const override { return Pose.Velocity; }
@@ -76,6 +78,8 @@ public:
     int32 SiteIndex() const { return Identity.Site; }
     int32 SystemIndex() const { return Identity.System; }
     int32 OrdinalIndex() const { return Identity.Ordinal; }
+    int32 HomeBuildingIndex() const { return Identity.Home; }
+    int32 WorkplaceBuildingIndex() const { return Identity.Workplace; }
 
 private:
     UPROPERTY() TObjectPtr<USkeletalMeshComponent> CitizenMesh;
@@ -99,6 +103,7 @@ private:
     TArray<FVoyagerCitizenNavNode> Navigation;
     TArray<int32> Route;
     TWeakObjectPtr<APawn> ConversationPartner;
+    TWeakObjectPtr<AVoyagerCityLife> CityLife;
     FRandomStream Random;
     FVector PathPosition=FVector::ZeroVector;
     FVector PassingOffset=FVector::ZeroVector;
@@ -116,6 +121,12 @@ private:
     float MovementAccumulator=0.f;
     float SignificanceRemaining=0.f;
     float NearestViewerDistance=0.f;
+    float CityLifeRefreshRemaining=0.f;
+    int32 ReportedBuilding=INDEX_NONE;
+    int32 PendingCoreHealth=INDEX_NONE;
+    int32 CoreGoalBuilding=INDEX_NONE;
+    int32 CoreActivity=INDEX_NONE;
+    bool bCityLifeBound=false;
     bool bVisualsBuilt=false;
     bool bDetailsVisible=true;
     void BuildVisuals();
@@ -126,6 +137,9 @@ private:
     void ChooseActivity();
     void Simulate(float DeltaSeconds);
     void UpdateSignificance();
+    void RefreshCityLife();
+    void ReportCityPresence();
+    void FinishDeath();
     int32 BuildingForRole(int32 DesiredRole,int32 Variation=0) const;
     int32 NearestStreetNode(const FVector& Position) const;
     double SynchronizedTime() const;
