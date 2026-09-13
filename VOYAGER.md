@@ -14,6 +14,10 @@ The settlement marker leads to a city about **320 metres** from the landing site
 
 ## On foot
 
+Open **Escape → Graphics** to cycle Low, Medium and High. The selection is saved locally;
+all three use full display resolution. Texture budgets are 1, 2 and 4 GB, limited by VRAM.
+These settings change rendering quality, not simulation populations or collision.
+
 - **WASD** walk; **mouse** look; **Shift** sprint; **Space** jump.
 - **F** scan and record this planet. A first discovery earns 30 minerals.
 - **Left mouse** mines a targeted crystal within 18 metres. **V** switches to the pulse sidearm; left mouse then fires out to 1,200 metres. Both tools can hurt residents, so aim carefully.
@@ -25,6 +29,7 @@ The settlement marker leads to a city about **320 metres** from the landing site
 - **N** cycles the city entrance guide: home, workplace, nearest market, nearest Civic Security, then off. It appears on foot near a city with the phone closed. The marker names the building, measures entrance distance and points toward offscreen entrances.
 - **F5** saves the expedition. **Escape** opens the menu.
 - **I** opens the backpack; **1–8** selects food, crafting and equipment actions. **I**, **Escape** or **Backspace** closes it; **P** switches to the city phone.
+- **Q** cycles owned supplies and returns to the extraction tool at the end. **Left mouse** uses held food, medicine or a charge through the same backpack actions. Hide, bone and energy cells are crafting/ammunition supplies. **V** puts the supply away and equips the sidearm.
 - **R** reloads the sidearm's 24-shot magazine in 1.4 seconds. Each shot consumes one energy cell; the backpack can craft more.
 
 ## Flying
@@ -33,7 +38,10 @@ The settlement marker leads to a city about **320 metres** from the landing site
 - **W** increases forward speed. **S** brakes to a stop. **A/D** strafe. **Mouse** steers.
 - **Shift** boosts forward flight and ascent/descent. **Left mouse** fires twin lasers.
 - Keep climbing to fly through the **60 km** atmosphere into space. The planet stays beneath you throughout the flight; crossing the atmosphere never teleports the ship.
-- On a planet, descend below 10 metres and press **E** to park and disembark.
+- On a planet, descend below 10 metres, release thrust and brake to 5 m/s or slower,
+  then press **E** over a level clearing. The full wing area and exit route must be clear.
+  If terrain collision is still streaming, wait briefly and try again. You stay aboard
+  when no safe exit exists; a blocked left side can use another clear side.
 
 The HUD identifies the physically nearest planet and measures altitude above its local terrain. It shows metres near the ground, kilometres higher up, actual speed in m/s or km/s, atmospheric density, and a reentry indicator while descending quickly. Selecting a different navigation target does not change these local flight readings.
 
@@ -83,7 +91,9 @@ Hunt wildlife with the sidearm, approach an unharvested carcass, and press **E**
 
 The **I** backpack has seven item stacks and eight actions. **1** eats raw meat, restoring 20 nourishment while costing 8 health. **2** cooks one raw meat with one mineral beside your landed ship (within 12 m), or inside a cafe or residence. **3** eats cooked meat for 50 nourishment, 8 hydration and 8 health. **4** crafts a medkit from two hide, two bone and five minerals; **5** uses one to restore up to 35 health. **6** crafts a demolition charge from two bone and twelve minerals. **7** attaches a charge to the building surface you aim at within 30 m. **8** crafts thirty energy cells from eight minerals. Recipes validate ingredients and output capacity before charging the inventory.
 
-Charges detonate after three seconds with a 22 m damage radius. Window damage removes glazing at the affected level; structural damage removes upper floors as integrity falls and can demolish the building. A maximum of 96 temporary debris actors use Unreal's native Chaos rigid-body simulation and radial gravity. Building integrity and glass flags are authoritative saved deltas; debris transforms do not decide the persistent structure. This is component-based building damage and debris, not Geometry Collection fracture, voxel excavation, fire propagation or a building-support engineering solver.
+Charges detonate after three seconds with a 22 m damage radius. Window damage removes glazing at the affected level. Structural damage affects four support regions per floor: by default, losing two removes that floor and everything above it. Existing aggregate integrity thresholds still apply. Services stop in fully collapsed buildings, even when their aggregate integrity remains positive.
+
+A maximum of 96 temporary fragments use Unreal's native Chaos rigid-body simulation and radial gravity. Glass and concrete have different density, friction, bounce, damping and mass-dependent impulse response. At capacity, debris actors are reused. Integrity, glass and support damage are saved; rubble motion never decides the structure. This is a coarse support model with cuboid fragments, not Geometry Collection fracture, voxel excavation, fire propagation or an engineering load solver. Schema 5 preserves older integrity/glass saves with empty support deltas.
 
 ## Combat and progression
 
@@ -111,7 +121,9 @@ The host runs one shared star system. Players have separate ships and cargo and 
 
 ## Build and test
 
-Version **0.9.1** validation is tracked in [VOYAGER_SECURITY.md](docs/phases/VOYAGER_SECURITY.md). Earlier results below are historical.
+Version **0.9.2** validation is tracked in [VOYAGER_PRODUCTION.md](docs/phases/VOYAGER_PRODUCTION.md).
+The [world audit](docs/VOYAGER_WORLD_AUDIT.md) distinguishes existing systems from remaining
+production work. Earlier results below are historical.
 
 - `Scripts/Test-VoyagerPolice.ps1`: warnings, attributed officer/drone damage, cover, dispatch, drone death and replication, innocent peer independence, legacy sentence removal and medical recovery. Supports `-Network`, `-Render` and `-Packaged`.
 - `Scripts/Test-VoyagerHunt.ps1`: animal damage/death, harvest validation and inventory. Supports `-Network`, `-Render` and `-Packaged`.

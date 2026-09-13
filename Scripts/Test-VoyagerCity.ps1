@@ -1,4 +1,4 @@
-param([switch]$Render, [switch]$Packaged)
+param([switch]$Render, [switch]$Packaged, [ValidateRange(1,2147483647)][int]$Seed=1)
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
@@ -41,7 +41,8 @@ if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw "Missing g
 $arguments = @(
     ('"' + (Join-Path $projectRoot 'Riftbound.uproject') + '"'),
     '/Game/Maps/Forest', '-game', '-nosound', '-unattended', '-NoSplash',
-    '-NoScreenMessages', '-VoyagerProbe', '-VoyagerCityAudit', ('-abslog="' + $logPath + '"')
+    '-NoScreenMessages', '-NoVoyagerLocalAI', '-VoyagerProbe', '-VoyagerCityAudit', '-VoyagerFurnitureAudit',
+    "-VoyagerAuditSeed=$Seed", ('-abslog="' + $logPath + '"')
 )
 if ($Packaged) { $arguments = $arguments[1..($arguments.Length - 1)] }
 if ($Render) { $arguments += @('-windowed', '-ResX=1280', '-ResY=720', '-VoyagerCapture') }
@@ -69,7 +70,7 @@ try {
     Write-Host "Voyager city audit: hidden PID $($ownedProcess.Id), walk-in interiors, citizens and a remote settlement."
     while ($clock.Elapsed.TotalSeconds -lt 180) {
         $logText = Read-AuditLog
-        if ($logText -match 'VOYAGER CITY AUDIT FAIL|Fatal error|Assertion failed|Ensure condition failed|Failed to compile Material|Failed to compile global shader') {
+        if ($logText -match 'VOYAGER (CITY|FURNITURE) AUDIT FAIL|Fatal error|Assertion failed|Ensure condition failed|Failed to compile Material|Failed to compile global shader') {
             throw 'City audit or renderer failed; inspect the retained log.'
         }
         if ($logText -match 'VOYAGER CITY AUDIT COMPLETE PASS') {
@@ -83,6 +84,9 @@ try {
     }
     if ($logText -notmatch 'VOYAGER CITY AUDIT COMPLETE PASS') { throw 'City audit timed out after 180 seconds.' }
     if ($logText -notmatch 'VOYAGER CITY AUDIT PASS') { throw 'City audit produced no individual passing checks.' }
+    if ($logText -notmatch "VOYAGER FURNITURE AUDIT PASS seed=$Seed\b[^\r\n]*assemblies=[1-9][0-9]*") {
+        throw 'No generated furniture assemblies passed orientation, support and radial transform checks.'
+    }
 }
 catch { $failure = $_.Exception.Message }
 finally {
@@ -95,7 +99,7 @@ finally {
     $clock.Stop()
     try {
         $logText = Read-AuditLog
-        if ($logText -match 'VOYAGER CITY AUDIT FAIL|Fatal error|Assertion failed|Ensure condition failed|Failed to compile Material|Failed to compile global shader') {
+        if ($logText -match 'VOYAGER (CITY|FURNITURE) AUDIT FAIL|Fatal error|Assertion failed|Ensure condition failed|Failed to compile Material|Failed to compile global shader') {
             if (-not $failure) { $failure = 'City audit or renderer failed; inspect the retained log.' }
         }
         $afterSaves = @(Get-ExpeditionHashes)
@@ -164,11 +168,12 @@ finally {
         elapsed_seconds = [Math]::Round($clock.Elapsed.TotalSeconds, 2)
         rendered = [bool]$Render
         packaged = [bool]$Packaged
+        seed = $Seed
         started_utc = $startedAt.ToString('o')
         process_id = $(if ($ownedProcess) { $ownedProcess.Id } else { $null })
         screenshots = $captures
         screenshot_checks = $captureChecks
-        evidence = @([regex]::Matches($logText, 'VOYAGER CITY AUDIT PASS[^\r\n]*') | ForEach-Object { $_.Value })
+        evidence = @([regex]::Matches($logText, 'VOYAGER (CITY|FURNITURE) AUDIT PASS[^\r\n]*') | ForEach-Object { $_.Value })
         performance = [ordered]@{
             interpretation = $(if ($Render) { 'Rendered hidden-window audit; includes first-use streaming and screenshot readback stalls. These samples are not a steady-state gameplay or GPU benchmark.' } else { 'NullRHI headless engine tick rate; FPS values do not measure rendering performance.' })
             samples = $performanceSamples

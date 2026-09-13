@@ -4,7 +4,7 @@ An original procedural space-adventure prototype in Unreal Engine 5.8.2. Explore
 
 **[Build from source](BUILDING.md)** using Git LFS and Unreal Engine 5.8. This project also contains the separate **[Living City](LIVINGCITY.md)** simulation mode.
 
-Version **0.9.1** removes jail, adds armed pursuit drones and replaces the police cruiser with an original hovering sedan. Building destruction, hunting, crafting and procedural worlds remain available. The [security milestone checklist](docs/phases/VOYAGER_SECURITY.md) records current validation.
+Version **0.9.2** improves landing safety, graphics presets, exposure, furniture alignment, usable supply models and structural destruction. Chairs face their tables; workstation screens face the user, with keyboards and mice supported by the desk. Seven original supply models connect to existing inventory actions, and deterministic support failure drives a bounded pool of native Chaos debris. The [world audit](docs/VOYAGER_WORLD_AUDIT.md) records the remaining realism work; [production validation](docs/phases/VOYAGER_PRODUCTION.md) contains build, multiplayer, save, screenshot and full-resolution benchmark evidence. Jail remains removed.
 
 **Double-click [Play Voyager.cmd](Play%20Voyager.cmd), [Play Riftbound.cmd](Play%20Riftbound.cmd), or the VOYAGER desktop shortcut.** The launcher uses the standalone Windows build when available, otherwise the compiled game through the installed Unreal Engine.
 
@@ -17,12 +17,12 @@ Residents can use an installed local Ollama `llama3.2:3b` model for short conver
 1. Press **F** to discover the starting planet and earn minerals. Hold **left mouse** on glowing crystals to mine them.
 2. Approach your ship and press **E** to board. Hold **Space** to launch and rise away from the planet. Hold **Shift** to boost through the atmosphere.
 3. Use **W/S** to accelerate/brake, **A/D** to strafe, **mouse** to steer, **Shift** to boost, and **left mouse** to fire.
-4. Above **60 km**, press **Tab** to choose a planet and **J** to cruise there continuously. The ship arrives at **90 km** altitude. Hold **Left Ctrl** to descend through the atmosphere, then press **E** below **10 m** to land and step outside.
+4. Above **60 km**, press **Tab** to choose a planet and **J** to cruise there continuously. The ship arrives at **90 km** altitude. Hold **Left Ctrl** to descend, release thrust and slow to **5 m/s** below **10 m**, then press **E** over a clear, level landing area.
 5. Press **H** above **60 km** to jump to the next star system. **U** buys a laser upgrade for 75 minerals while aboard or near your ship.
 
-On foot: **WASD** move, **Shift** sprint, **Space** jump. In flight: **Space** rises, **Left Ctrl** descends; **E** below **10 m** lands and disembarks. **F5** saves; **Escape** opens the menu.
+On foot: **WASD** move, **Shift** sprint, **Space** jump. In flight: **Space** rises, **Left Ctrl** descends; **E** requests a safe landing or exit. **F5** saves; **Escape** opens the menu and graphics presets.
 
-**I** opens the backpack; **1–8** selects food, cooking, medkits, demolition charges or ammunition recipes. **V** equips the sidearm and **R** reloads its 24-shot magazine. Hunt wildlife, approach a carcass and press **E** to collect meat, hide and bone. Cook beside your landed ship or inside a cafe or residence. A planted demolition charge has a three-second fuse; retreat at least 22 metres.
+**I** opens the backpack; **1–8** selects food, cooking, medkits, demolition charges or ammunition recipes. **Q** cycles owned supplies into your hand; **left mouse** uses held food, a medkit or a demolition charge. Crafting materials remain available in the backpack. **V** clears the held supply and switches to the sidearm; **R** reloads its 24-shot magazine. Hunt wildlife, approach a carcass and press **E** to collect meat, hide and bone. Cook beside your landed ship or inside a cafe or residence. A planted demolition charge has a three-second fuse; retreat at least 22 metres.
 
 Follow the settlement marker to the first city, about **320 m** from the landing site. All **60 buildings** have furnished occupied floors, glazed windows, open doors, and connected stairs to every level and the roof. Residents use clothed skeletal character meshes and animated walks, commute, work, visit cafes and react to nearby weapon fire. Look toward someone nearby and press **E** to talk; **1–3** choose topics and **Backspace** ends the conversation. Watch animals graze outside the city. Each biome has its own city palette and animal species.
 

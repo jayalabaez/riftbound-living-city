@@ -1,0 +1,18 @@
+{
+  "support_strength_centipoints": 18000,
+  "required_regional_supports": 3,
+  "maximum_debris_bodies": 96,
+  "debris_lifetime_seconds": 45,
+  "concrete_density_kg_m3": 2300,
+  "concrete_friction": 0.8,
+  "concrete_restitution": 0.08,
+  "concrete_linear_damping": 0.28,
+  "concrete_angular_damping": 0.7,
+  "concrete_impulse_kg_cm_s": 18000,
+  "glass_density_kg_m3": 2500,
+  "glass_friction": 0.35,
+  "glass_restitution": 0.18,
+  "glass_linear_damping": 0.6,
+  "glass_angular_damping": 1.2,
+  "glass_impulse_kg_cm_s": 380
+}

@@ -471,8 +471,16 @@ void AVoyagerCityLife::HandleAction(AController* Controller,uint8 Action,int32 A
     if(!Remote&&(!View.bAtCity||!View.bOnFoot)){PC->Notify(TEXT("Land and enter a city building to use this service."));return;}
     if(!Remote&&View.CurrentBuilding>=0)
         if(auto Destruction=AVoyagerDestruction::Find(GetWorld()))
-            if(const auto Damage=Destruction->FindDamage(State->SystemSeed,View.CityKey/3,View.CityKey%3,View.CurrentBuilding);Damage&&Damage->Integrity<=0)
-            {PC->Notify(TEXT("This building has collapsed. Visit another branch for city services."));return;}
+            if(const auto Damage=Destruction->FindDamage(State->SystemSeed,View.CityKey/3,View.CityKey%3,View.CurrentBuilding))
+            {
+                FVoyagerBuildingInfo Building;
+                if(!AVoyagerSettlement::GetBuildingInfo(State->SystemSeed,View.CityKey/3,View.CityKey%3,View.CurrentBuilding,Building))
+                {PC->Notify(TEXT("Building services are unavailable."));return;}
+                // Regional support loss can remove every floor while aggregate
+                // integrity remains positive. Services follow the surviving structure.
+                if(AVoyagerDestruction::SurvivingFloors(Damage,Building.FloorCount)<=0)
+                {PC->Notify(TEXT("This building has collapsed. Visit another branch for city services."));return;}
+            }
     lc::PlanetaryCommand Cmd;Cmd.building=uint32(View.CurrentBuilding);Cmd.quantity=1;
     switch(Type)
     {

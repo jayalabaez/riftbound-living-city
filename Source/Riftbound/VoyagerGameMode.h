@@ -59,7 +59,7 @@ class RIFTBOUND_API UVoyagerSave : public USaveGame
 {
     GENERATED_BODY()
 public:
-    UPROPERTY() int32 Version=4;
+    UPROPERTY() int32 Version=5;
     UPROPERTY() TArray<int32> Items=VoyagerItems::StartingInventory();
     UPROPERTY() TArray<FVoyagerBuildingDamage> BuildingDamage;
     UPROPERTY() float JailSeconds=0;

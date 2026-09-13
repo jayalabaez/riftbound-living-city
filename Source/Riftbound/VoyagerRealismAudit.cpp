@@ -355,9 +355,10 @@ namespace VoyagerRealismAudit
             // These UE properties are absolute extinction/scattering coefficients
             // per kilometre, not multipliers. Treating 1.0 as neutral previously
             // produced a yellow opaque sky despite all geometry checks passing.
-            const float Rayleigh = Atmospheres[0]->RayleighScatteringScale;
-            const float Mie = Atmospheres[0]->MieScatteringScale;
-            const float Absorption = Atmospheres[0]->MieAbsorptionScale;
+            const float GroundOffsetKm=float(Voyager::PlanetRadius(State->SystemSeed,Run->Garden)/Voyager::CentimetersPerKm)-Atmospheres[0]->BottomRadius;
+            const float Rayleigh = Atmospheres[0]->RayleighScatteringScale*FMath::Exp(-GroundOffsetKm/Atmospheres[0]->RayleighExponentialDistribution);
+            const float Mie = Atmospheres[0]->MieScatteringScale*FMath::Exp(-GroundOffsetKm/Atmospheres[0]->MieExponentialDistribution);
+            const float Absorption = Atmospheres[0]->MieAbsorptionScale*FMath::Exp(-GroundOffsetKm/Atmospheres[0]->MieExponentialDistribution);
             if (!(Rayleigh > 0.f && Rayleigh < .1f && Mie >= 0.f && Mie < .03f && Absorption >= 0.f && Absorption < .02f))
             { Fail(TEXT("ATMOSPHERE_COEFFICIENT_UNITS_OR_DENSITY")); return; }
             Pass(TEXT("EXOSPHERE_FIXTURE"), FString::Printf(

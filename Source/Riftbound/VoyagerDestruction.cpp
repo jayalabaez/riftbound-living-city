@@ -8,6 +8,7 @@
 #include "VoyagerCharacter.h"
 #include "VoyagerShip.h"
 #include "VoyagerPolice.h"
+#include "VoyagerItemVisuals.h"
 #include "Sound/SoundBase.h"
 #include "RiftVisual.h"
 #include "RiftCharacter.h"
@@ -17,17 +18,74 @@
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "livingcity/destruct/BuildingStructure.h"
 
 namespace
 {
     constexpr int32 MaxSavedDamageRecords=65536;
-    constexpr uint32 ValidGlassFloorBits=(1u<<18)-1u;
+    struct FDebrisSurface
+    {
+        float Density=2300.f,Friction=.8f,Restitution=.08f,LinearDamping=.28f,AngularDamping=.7f,Impulse=18000.f;
+    };
+    struct FDestructionSettings
+    {
+        lc::StructureLimits Structure;
+        FDebrisSurface Concrete;
+        FDebrisSurface Glass{2500.f,.35f,.18f,.6f,1.2f,380.f};
+        int32 MaxDebris=96;
+        float Lifetime=45.f;
+    };
+    const FDestructionSettings& Settings()
+    {
+        static const FDestructionSettings Value=[]
+        {
+            FDestructionSettings S;FString Text;TSharedPtr<FJsonObject> Json;
+            if(FFileHelper::LoadFileToString(Text,*(FPaths::ProjectContentDir()/TEXT("CityData/destruction.json")))&&
+                FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text),Json)&&Json.IsValid())
+            {
+                auto Read=[&](const FString& Key,float& V,float Low,float High){double N;if(Json->TryGetNumberField(Key,N)&&FMath::IsFinite(N))V=float(FMath::Clamp(N,double(Low),double(High)));};
+                float Strength=float(S.Structure.supportStrength),Supports=float(S.Structure.requiredSupports),Budget=float(S.MaxDebris);
+                Read(TEXT("support_strength_centipoints"),Strength,100.f,60000.f);S.Structure.supportStrength=FMath::RoundToInt(Strength);
+                Read(TEXT("required_regional_supports"),Supports,1.f,4.f);S.Structure.requiredSupports=FMath::RoundToInt(Supports);
+                Read(TEXT("maximum_debris_bodies"),Budget,12.f,96.f);S.MaxDebris=FMath::RoundToInt(Budget);
+                Read(TEXT("debris_lifetime_seconds"),S.Lifetime,8.f,45.f);
+                auto Surface=[&](const FString& Prefix,FDebrisSurface& M)
+                {
+                    Read(Prefix+TEXT("_density_kg_m3"),M.Density,500.f,3500.f);
+                    Read(Prefix+TEXT("_friction"),M.Friction,.05f,1.f);Read(Prefix+TEXT("_restitution"),M.Restitution,0.f,.35f);
+                    Read(Prefix+TEXT("_linear_damping"),M.LinearDamping,.05f,3.f);Read(Prefix+TEXT("_angular_damping"),M.AngularDamping,.1f,3.f);
+                    Read(Prefix+TEXT("_impulse_kg_cm_s"),M.Impulse,50.f,50000.f);
+                };
+                Surface(TEXT("concrete"),S.Concrete);Surface(TEXT("glass"),S.Glass);
+            }
+            else UE_LOG(LogTemp,Warning,TEXT("VOYAGER DESTRUCTION using bounded defaults: destruction.json unavailable"));
+            return S;
+        }();return Value;
+    }
+    bool ReadStructure(const FVoyagerBuildingDamage& Entry,lc::BuildingStructure& State)
+    {
+        if(!FMath::IsFinite(Entry.Integrity)||Entry.Integrity<0.f||Entry.Integrity>1200.f)return false;
+        return lc::RestoreStructure(State,FMath::RoundToInt(double(Entry.Integrity)*100.0),Entry.BrokenGlassFloors,
+            std::span<const lc::u16>(Entry.SupportDamage.GetData(),Entry.SupportDamage.Num()),Entry.CollapsedFromFloor);
+    }
+    void WriteStructure(const lc::BuildingStructure& State,FVoyagerBuildingDamage& Entry)
+    {
+        Entry.Integrity=float(State.integrity)*.01f;Entry.BrokenGlassFloors=State.brokenGlassFloors;Entry.CollapsedFromFloor=State.collapsedFromFloor;
+        const bool HasSupportDamage=std::any_of(State.supportDamage.begin(),State.supportDamage.end(),[](lc::u16 D){return D!=0;});
+        Entry.SupportDamage.Reset();
+        if(HasSupportDamage)Entry.SupportDamage.Append(State.supportDamage.data(),lc::StructureSupportCount);
+    }
     bool ValidDamage(const FVoyagerBuildingDamage& Entry)
     {
+        lc::BuildingStructure Structure;
         return Entry.System>0&&Entry.Planet>=0&&Entry.Planet<Voyager::PlanetCount&&
             Entry.Site>=0&&Entry.Site<AVoyagerSettlement::SitesPerPlanet&&Entry.Building>=0&&Entry.Building<AVoyagerSettlement::BuildingCount()&&
-            FMath::IsFinite(Entry.Integrity)&&Entry.Integrity>=0.f&&Entry.Integrity<=1200.f&&
-            (Entry.BrokenGlassFloors&~ValidGlassFloorBits)==0;
+            ReadStructure(Entry,Structure);
     }
     uint64 DamageKey(const FVoyagerBuildingDamage& Entry)
     {
@@ -41,7 +99,9 @@ AVoyagerDebris::AVoyagerDebris()
     Body=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ChaosFragment"));SetRootComponent(Body);
     Body->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
     Body->SetMobility(EComponentMobility::Movable);Body->SetCollisionProfileName(TEXT("BlockAllDynamic"));
-    Body->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);Body->SetEnableGravity(false);
+    Body->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);Body->SetCollisionResponseToChannel(ECC_WorldDynamic,ECR_Ignore);
+    Body->SetCollisionResponseToChannel(ECC_Visibility,ECR_Ignore);Body->SetCollisionResponseToChannel(ECC_Camera,ECR_Ignore);
+    Body->SetEnableGravity(false);Body->SetCanEverAffectNavigation(false);
     Body->SetLinearDamping(.5f);Body->SetAngularDamping(.8f);Body->BodyInstance.bUseCCD=true;
     SetNetCullDistanceSquared(FMath::Square(90000.f));
 }
@@ -57,17 +117,48 @@ void AVoyagerDebris::OnRep_Position()
     if(!bReceivedPosition&&!Position.ContainsNaN())SetActorLocationAndRotation(Position,Rotation);
     bReceivedPosition=true;
 }
+void AVoyagerDebris::OnRep_Recycled()
+{
+    // A reused body represents a new fragment. Never interpolate its old rubble
+    // position through the city to the next blast location.
+    bReceivedPosition=false;OnRep_Position();
+}
 void AVoyagerDebris::OnRep_Appearance()
 {
     Body->SetWorldScale3D(Scale);
-    Body->SetMaterial(0,RiftVisual::Material(this,Tint));
+    if(bGlassPiece)
+    {
+        if(auto* Material=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_VoyagerGlass.M_VoyagerGlass")))Body->SetMaterial(0,Material);
+        else Body->SetMaterial(0,RiftVisual::Material(this,Tint));
+    }
+    else
+    {
+        auto* Material=RiftVisual::Material(this,Tint);Material->SetScalarParameterValue(TEXT("Roughness"),.88f);Body->SetMaterial(0,Material);
+    }
+    Body->SetCastShadow(!bGlassPiece);
 }
-void AVoyagerDebris::InitializePiece(const FTransform& Transform,FLinearColor Color,FVector Impulse,int32 S,int32 P)
+void AVoyagerDebris::InitializePiece(const FTransform& Transform,FLinearColor Color,FVector Impulse,int32 S,int32 P,bool Glass)
 {
     if(!HasAuthority()||Transform.ContainsNaN()||Impulse.ContainsNaN()||S<1||P<0||P>=Voyager::PlanetCount){Destroy();return;}
-    System=S;Planet=P;Tint=Color;Scale=Transform.GetScale3D().GetAbs().BoundToBox(FVector(.02),FVector(8));SetActorTransform(Transform);Position=GetActorLocation();Rotation=GetActorQuat();
-    OnRep_Appearance();Body->SetSimulatePhysics(true);Body->SetMassOverrideInKg(NAME_None,FMath::Clamp(float(Scale.X*Scale.Y*Scale.Z)*120.f,4.f,240.f),true);
-    Body->AddImpulse(Impulse,NAME_None,true);Body->SetPhysicsAngularVelocityInDegrees(FVector(35,65,20));SetLifeSpan(45.f);ForceNetUpdate();
+    // Recycling resets the body rather than allocating beyond the shared pool cap.
+    Body->SetSimulatePhysics(false);Age=0;System=S;Planet=P;Tint=Color;bGlassPiece=Glass;++PieceSerial;
+    Scale=Transform.GetScale3D().GetAbs().BoundToBox(FVector(.004),FVector(8));
+    SetActorTransform(FTransform(Transform.GetRotation(),Transform.GetLocation(),Scale),false,nullptr,ETeleportType::TeleportPhysics);
+    Position=GetActorLocation();Rotation=GetActorQuat();OnRep_Appearance();
+    const auto& Surface=Glass?Settings().Glass:Settings().Concrete;
+    if(!ContactMaterial)ContactMaterial=NewObject<UPhysicalMaterial>(this);
+    ContactMaterial->Friction=Surface.Friction;ContactMaterial->StaticFriction=Surface.Friction;
+    ContactMaterial->Restitution=Surface.Restitution;ContactMaterial->Density=Surface.Density*.001f;
+    ContactMaterial->bOverrideRestitutionCombineMode=true;ContactMaterial->RestitutionCombineMode=EFrictionCombineMode::Min;
+    Body->SetPhysMaterialOverride(ContactMaterial);Body->SetLinearDamping(Surface.LinearDamping);Body->SetAngularDamping(Surface.AngularDamping);
+    Body->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);Body->SetSimulatePhysics(true);
+    const float MassKg=FMath::Clamp(float(Scale.X*Scale.Y*Scale.Z)*Surface.Density,.05f,1500.f);
+    Body->SetMassOverrideInKg(NAME_None,MassKg,true);Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+    Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+    // Impulse is momentum (kg cm/s), so equally pushed large chunks move slower.
+    Body->AddImpulse(Impulse.GetClampedToMaxSize(MassKg*2200.f),NAME_None,false);
+    Body->SetPhysicsAngularVelocityInDegrees(Transform.GetRotation().RotateVector(FVector(35,65,20))*(Glass?2.f:.5f));
+    SetLifeSpan(Settings().Lifetime);ForceNetUpdate();
 }
 void AVoyagerDebris::Tick(float D)
 {
@@ -89,7 +180,7 @@ void AVoyagerDebris::Tick(float D)
     {if(!bReceivedPosition||Position.ContainsNaN())return;SetActorLocation(FVector::DistSquared(GetActorLocation(),Position)>1.e10?Position:FMath::VInterpTo(GetActorLocation(),Position,D,18));SetActorRotation(FQuat::Slerp(GetActorQuat(),Rotation,FMath::Clamp(D*18.f,0.f,1.f)));}
 }
 void AVoyagerDebris::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerDebris,Position);DOREPLIFETIME(AVoyagerDebris,Rotation);DOREPLIFETIME(AVoyagerDebris,Scale);DOREPLIFETIME(AVoyagerDebris,Tint);}
+{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerDebris,Position);DOREPLIFETIME(AVoyagerDebris,Rotation);DOREPLIFETIME(AVoyagerDebris,Scale);DOREPLIFETIME(AVoyagerDebris,Tint);DOREPLIFETIME(AVoyagerDebris,bGlassPiece);DOREPLIFETIME(AVoyagerDebris,PieceSerial);}
 
 AVoyagerBlastCloud::AVoyagerBlastCloud()
 {
@@ -129,8 +220,14 @@ void AVoyagerBlastCloud::Tick(float D)
 }
 
 AVoyagerDemolitionCharge::AVoyagerDemolitionCharge()
-{bReplicates=true;SetReplicateMovement(true);PrimaryActorTick.bCanEverTick=true;Body=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Charge"));SetRootComponent(Body);Body->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);Body->SetRelativeScale3D(FVector(.28,.14,.32));}
-void AVoyagerDemolitionCharge::BeginPlay(){Super::BeginPlay();Body->SetMaterial(0,RiftVisual::Material(this,FLinearColor(.07f,.085f,.075f)));RiftVisual::Mesh(this,Body,TEXT("ArmedIndicator"),TEXT("Sphere"),FVector(0,-55,0),FVector(.18),FLinearColor(1.f,.04f,.01f),true);}
+{bReplicates=true;SetReplicateMovement(true);PrimaryActorTick.bCanEverTick=true;Body=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Charge"));SetRootComponent(Body);Body->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);Body->SetVisibility(false);}
+void AVoyagerDemolitionCharge::BeginPlay()
+{
+    Super::BeginPlay();
+    // The proxy root stays unscaled: item geometry uses actual centimetres.
+    if(!VoyagerItemVisuals::Build(this,Body,EVoyagerItem::DemolitionCharge)&&GetNetMode()!=NM_DedicatedServer)
+    {Body->SetVisibility(true);Body->SetRelativeScale3D(FVector(.27,.18,.1));Body->SetMaterial(0,RiftVisual::Material(this,FLinearColor(.07f,.085f,.075f)));}
+}
 void AVoyagerDemolitionCharge::Arm(AController* Controller){InstigatorController=Controller;}
 void AVoyagerDemolitionCharge::Tick(float D){Super::Tick(D);if(HasAuthority()&&(Fuse-=D)<=0){if(auto System=AVoyagerDestruction::Find(GetWorld()))System->Explode(GetActorLocation(),InstigatorController.Get());Destroy();}}
 
@@ -152,7 +249,7 @@ void AVoyagerDestruction::Tick(float D)
 const FVoyagerBuildingDamage* AVoyagerDestruction::FindDamage(int32 S,int32 P,int32 C,int32 B) const
 {for(const auto& Entry:Current)if(Entry.Matches(S,P,C,B))return &Entry;return nullptr;}
 int32 AVoyagerDestruction::SurvivingFloors(const FVoyagerBuildingDamage* Damage,int32 Floors)
-{if(!Damage)return Floors;if(Damage->Integrity<=0)return 0;if(Damage->Integrity<=300)return FMath::Max(1,Floors/3);if(Damage->Integrity<=650)return FMath::Max(1,Floors*2/3);return Floors;}
+{if(!Damage)return Floors;lc::BuildingStructure State;return ReadStructure(*Damage,State)?lc::StandingFloors(State,Floors):Floors;}
 int32 AVoyagerDestruction::DebrisCount() const {int32 Count=0;for(const auto& Piece:Debris)if(IsValid(Piece))++Count;return Count;}
 bool AVoyagerDestruction::DamageHit(const FHitResult& Hit,float Amount,AController* DamageInstigator)
 {
@@ -174,8 +271,12 @@ bool AVoyagerDestruction::DamageBuilding(int32 S,int32 P,int32 C,int32 B,float A
     }
     const int32 Before=SurvivingFloors(Entry,Info.FloorCount);if(Before==0)return false;
     const int32 Floor=FMath::Clamp(FMath::FloorToInt(FVector::DotProduct(Impact-Info.Floor,Info.Up)/Info.FloorHeight),0,Info.FloorCount-1);
-    if(bGlass){const uint32 Flag=1u<<Floor;if(Entry->BrokenGlassFloors&Flag)return false;Entry->BrokenGlassFloors|=Flag;}
-    else Entry->Integrity=FMath::Max(0.f,Entry->Integrity-FMath::Min(Amount,1200.f));
+    const FVector Local=Info.Rotation.UnrotateVector(Impact-Info.Floor);
+    const int32 Support=(Local.X>=0?1:0)+(Local.Y>=0?2:0);
+    lc::BuildingStructure Structure;
+    if(!ReadStructure(*Entry,Structure)||!lc::ApplyStructuralImpact(Structure,Info.FloorCount,Floor,Support,
+        FMath::Max(1,FMath::RoundToInt(double(FMath::Min(Amount,1200.f))*100.0)),bGlass,Settings().Structure))return false;
+    WriteStructure(Structure,*Entry);
     const int32 After=SurvivingFloors(Entry,Info.FloorCount);++DamageRevision;ForceNetUpdate();
     EmitDebris(Impact,Info.Up,S,P,bGlass?5:4,bGlass);
     if(After<Before)
@@ -190,26 +291,42 @@ bool AVoyagerDestruction::DamageBuilding(int32 S,int32 P,int32 C,int32 B,float A
 void AVoyagerDestruction::EmitDebris(FVector Center,FVector Up,int32 S,int32 P,int32 Count,bool Glass)
 {
     if(!HasAuthority()||Center.ContainsNaN()||Up.ContainsNaN()||S<1||P<0||P>=Voyager::PlanetCount)return;
-    Count=FMath::Clamp(Count,0,96);Up=Up.GetSafeNormal(UE_SMALL_NUMBER,FVector::UpVector);
+    Count=FMath::Clamp(Count,0,Settings().MaxDebris);Up=Up.GetSafeNormal(UE_SMALL_NUMBER,FVector::UpVector);
+    Debris.RemoveAll([](const auto& Piece){return !IsValid(Piece);});
     FRandomStream Random{DamageRevision*193+Debris.Num()*7};
-    for(int32 I=0;I<Count&&DebrisCount()<96;++I)
+    for(int32 I=0;I<Count;++I)
     {
-        FActorSpawnParameters Params;Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-        auto Piece=GetWorld()->SpawnActor<AVoyagerDebris>(Center,FRotator::ZeroRotator,Params);if(!Piece)continue;
-        const FVector Side=Random.VRand();const float Size=Glass?Random.FRandRange(.12f,.34f):Random.FRandRange(.4f,1.3f);
-        Piece->InitializePiece(FTransform(Voyager::TangentRotation(Up).Quaternion(),Center+Side*130,FVector(Size,Size*(Glass?.15f:1.f),Size*.4f)),Glass?FLinearColor(.15f,.43f,.5f):FLinearColor(.35f,.34f,.31f),(Side+Up*.7f)*Random.FRandRange(350.f,1100.f),S,P);Debris.Add(Piece);
+        AVoyagerDebris* Piece=nullptr;
+        if(Debris.Num()<Settings().MaxDebris)
+        {
+            FActorSpawnParameters Params;Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+            Piece=GetWorld()->SpawnActor<AVoyagerDebris>(Center,FRotator::ZeroRotator,Params);if(!Piece)continue;Debris.Add(Piece);
+        }
+        else {NextRecycledPiece%=Debris.Num();Piece=Debris[NextRecycledPiece++];}
+        const FVector Side=Random.VRand();const float Size=Glass?Random.FRandRange(.12f,.34f):Random.FRandRange(.22f,.72f);
+        const FVector Scale=Glass?FVector(Size,Random.FRandRange(.004f,.008f),Size*.65f):FVector(Size,Size*.8f,Size*.45f);
+        const FVector Momentum=(Side+Up*.7f).GetSafeNormal()*(Glass?Settings().Glass.Impulse:Settings().Concrete.Impulse)*Random.FRandRange(.65f,1.25f);
+        Piece->InitializePiece(FTransform(Voyager::TangentRotation(Up).Quaternion(),Center+Side*130,Scale),Glass?FLinearColor(.15f,.43f,.5f):FLinearColor(.35f,.34f,.31f),Momentum,S,P,Glass);
     }
 }
 void AVoyagerDestruction::Explode(FVector Center,AController* DamageInstigator)
 {
     if(!HasAuthority()||Center.ContainsNaN())return;auto State=GetWorld()->GetGameState<AVoyagerState>();if(!State)return;
     const int32 P=Voyager::NearestPlanet(State->SystemSeed,Center);const float Radius=2200;
-    for(int32 Site=0;Site<3;++Site)for(int32 Building=0;Building<60;++Building)
+    for(int32 Site=0;Site<AVoyagerSettlement::SitesPerPlanet;++Site)for(int32 Building=0;Building<AVoyagerSettlement::BuildingCount();++Building)
     {
         FVoyagerBuildingInfo Info;if(!AVoyagerSettlement::GetBuildingInfo(State->SystemSeed,P,Site,Building,Info))continue;
+        const int32 Floors=SurvivingFloors(FindDamage(State->SystemSeed,P,Site,Building),Info.FloorCount);
+        if(Floors<=0)continue;
+        const double Height=Floors*Info.FloorHeight;
         const FVector Local=Info.Rotation.UnrotateVector(Center-Info.Floor);
-        const FVector Nearest(FMath::Clamp(Local.X,-Info.Width*.5,Info.Width*.5),FMath::Clamp(Local.Y,-Info.Depth*.5,Info.Depth*.5),FMath::Clamp(Local.Z,0.,Info.Height));
-        if(FVector::DistSquared(Local,Nearest)<FMath::Square(Radius))DamageBuilding(State->SystemSeed,P,Site,Building,750,Center,DamageInstigator);
+        FVector Nearest(FMath::Clamp(Local.X,-Info.Width*.5,Info.Width*.5),FMath::Clamp(Local.Y,-Info.Depth*.5,Info.Depth*.5),FMath::Clamp(Local.Z,0.,Height));
+        if(FVector::DistSquared(Local,Nearest)>=FMath::Square(Radius))continue;
+        // Damage the nearest surviving storey, including blasts above collapsed
+        // upper floors. Keep a roof contact inside the top storey's half-open range.
+        Nearest.Z=FMath::Min(Nearest.Z,Height-1.0);
+        const FVector StructuralImpact=Info.Floor+Info.Rotation.RotateVector(Nearest);
+        DamageBuilding(State->SystemSeed,P,Site,Building,750,StructuralImpact,DamageInstigator);
     }
     for(TActorIterator<AActor> It(GetWorld());It;++It)
     {

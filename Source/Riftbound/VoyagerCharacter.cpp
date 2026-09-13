@@ -10,6 +10,8 @@
 #include "VoyagerCitizen.h"
 #include "VoyagerLocalAI.h"
 #include "VoyagerData.h"
+#include "VoyagerItemVisuals.h"
+#include "ProceduralMeshComponent.h"
 #include "RiftVisual.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -35,6 +37,8 @@
 #include "Widgets/Input/SEditableTextBox.h"
 #include "GameFramework/WorldSettings.h"
 #include "HAL/PlatformMemory.h"
+#include "GameFramework/GameUserSettings.h"
+#include "Misc/ConfigCacheIni.h"
 
 class SVoyagerMenu : public SCompoundWidget
 {
@@ -80,7 +84,7 @@ void AVoyagerCharacter::BeginPlay()
     auto Visor=RiftVisual::Mesh(this,GetRootComponent(),TEXT("ExplorerVisor"),TEXT("Sphere"),FVector(14,0,50),FVector(.2f,.36f,.22f),Mint,true);Visor->SetOwnerNoSee(true);
     for(int I=-1;I<=1;I+=2){auto Leg=RiftVisual::Mesh(this,GetRootComponent(),FName(*FString::Printf(TEXT("Boot%d"),I)),TEXT("Cube"),FVector(0,I*15,-66),FVector(.2f,.21f,.44f),Ink);Leg->SetOwnerNoSee(true);}
 }
-void AVoyagerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerCharacter,Health);DOREPLIFETIME(AVoyagerCharacter,bWeaponMode);}
+void AVoyagerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerCharacter,Health);DOREPLIFETIME(AVoyagerCharacter,bWeaponMode);DOREPLIFETIME(AVoyagerCharacter,HeldSupply);}
 bool AVoyagerCharacter::CanAct() const
 {
     if(Health<=0)return false;
@@ -95,6 +99,7 @@ void AVoyagerCharacter::SetupPlayerInputComponent(UInputComponent* I)
     I->BindAction("Interact",IE_Pressed,this,&AVoyagerCharacter::Interact);I->BindAction("Scan",IE_Pressed,this,&AVoyagerCharacter::Scan);
     I->BindAction("Sprint",IE_Pressed,this,&AVoyagerCharacter::Sprint);I->BindAction("Sprint",IE_Released,this,&AVoyagerCharacter::StopSprint);
     I->BindKey(EKeys::V,IE_Pressed,this,&AVoyagerCharacter::ToggleWeapon);
+    I->BindKey(EKeys::Q,IE_Pressed,this,&AVoyagerCharacter::CycleSupply);
     I->BindKey(EKeys::C,IE_Pressed,this,&AVoyagerCharacter::ToggleBodycam);
 }
 void AVoyagerCharacter::ToggleBodycam()
@@ -106,7 +111,57 @@ void AVoyagerCharacter::Forward(float V){if(CanAct())AddMovementInput(GetActorFo
 void AVoyagerCharacter::Right(float V){if(CanAct())AddMovementInput(GetActorRightVector(),V);}
 void AVoyagerCharacter::Turn(float V){if(auto PC=Cast<AVoyagerController>(Controller);PC&&!PC->bMenuVisible&&!PC->bCityPhoneVisible)AddControllerYawInput(V*.85f);}
 void AVoyagerCharacter::Look(float V){if(auto PC=Cast<AVoyagerController>(Controller);PC&&!PC->bMenuVisible&&!PC->bCityPhoneVisible)AddControllerPitchInput(V*.85f);}
-void AVoyagerCharacter::StartMine(){if(CanAct())bMining=true;}
+void AVoyagerCharacter::StartMine(){
+    if(!CanAct())return;
+    if(auto PC=Cast<AVoyagerController>(Controller);PC&&PC->bCityPhoneVisible)return;
+    if(HeldSupply>=0){
+        ServerUseHeldSupply(HeldSupply);
+        return;
+    }
+    bMining=true;
+}
+void AVoyagerCharacter::CycleSupply(){
+    if(auto PC=Cast<AVoyagerController>(Controller);PC&&PC->bCityPhoneVisible)return;
+    if(CanAct()){bMining=false;ServerCycleSupply();}
+}
+void AVoyagerCharacter::ServerUseHeldSupply_Implementation(int32 ExpectedItem)
+{
+    // Q, V and held-use share this actor's ordered RPC channel. A stale client
+    // selection cannot consume an item after the authority has changed tools.
+    if(!CanAct()||ExpectedItem!=HeldSupply||HeldSupply<0||HeldSupply>=int32(EVoyagerItem::Count))return;
+    auto PC=Cast<AVoyagerController>(Controller);auto PS=GetPlayerState<AVoyagerPlayerState>();
+    if(!PC||!PS)return;
+    if(PS->ItemCount(EVoyagerItem(HeldSupply))<=0){RefreshHeldSupply();return;}
+    static constexpr uint8 Actions[]={1,3,0,0,5,7,0};
+    if(Actions[HeldSupply])PC->ServerSurvivalAction(Actions[HeldSupply]);
+    else PC->Notify(TEXT("Craft with this supply in I / backpack. Q cycles equipment; V equips the sidearm."));
+}
+void AVoyagerCharacter::ServerCycleSupply_Implementation()
+{
+    if(!CanAct())return;auto PS=GetPlayerState<AVoyagerPlayerState>();if(!PS)return;
+    const float Now=GetWorld()->GetTimeSeconds();if(Now-LastEquipmentChange<.2f)return;LastEquipmentChange=Now;
+    const int32 Count=int32(EVoyagerItem::Count);
+    int32 Next=-1;
+    for(int32 Index=HeldSupply+1;Index<Count;++Index)if(PS->ItemCount(EVoyagerItem(Index))>0){Next=Index;break;}
+    HeldSupply=Next;bWeaponMode=false;bMining=false;OnRep_HeldSupply();ForceNetUpdate();
+    if(auto PC=Cast<AVoyagerController>(Controller))PC->Notify(HeldSupply<0?TEXT("EXTRACTION TOOL / LMB mine."):FString::Printf(TEXT("%s equipped / LMB use, Q next supply, V sidearm"),VoyagerItems::Name(EVoyagerItem(HeldSupply))));
+}
+void AVoyagerCharacter::RefreshHeldSupply()
+{
+    if(!HasAuthority()||HeldSupply<0)return;
+    auto PS=GetPlayerState<AVoyagerPlayerState>();
+    if(!PS||PS->ItemCount(EVoyagerItem(HeldSupply))<=0){HeldSupply=-1;OnRep_HeldSupply();ForceNetUpdate();}
+}
+void AVoyagerCharacter::OnRep_HeldSupply()
+{
+    bMining=false;
+    if(SupplyVisual){SupplyVisual->DestroyComponent();SupplyVisual=nullptr;}
+    if(HeldSupply<0||HeldSupply>=int32(EVoyagerItem::Count)||GetNetMode()==NM_DedicatedServer)return;
+    SupplyVisual=VoyagerItemVisuals::Build(this,Camera,EVoyagerItem(HeldSupply));
+    if(!SupplyVisual)return;
+    SupplyVisual->SetRelativeLocation(FVector(60,18,-20));SupplyVisual->SetRelativeRotation(FRotator(0,-20,-8));
+    SupplyVisual->SetOnlyOwnerSee(true);SupplyVisual->SetCastShadow(false);
+}
 void AVoyagerCharacter::StopMine(){bMining=false;}
 void AVoyagerCharacter::Interact(){if(CanAct())ServerInteract();}
 void AVoyagerCharacter::Scan(){if(CanAct()){ScanPulse=1.f;ServerScan();}}
@@ -122,7 +177,7 @@ void AVoyagerCharacter::Tick(float D)
         const FVector Up=Voyager::SurfaceNormal(PlanetState->SystemSeed,Planet,GetActorLocation());
         GetCharacterMovement()->SetGravityDirection(-Up);
         if(IsLocallyControlled()||HasAuthority())SetActorRotation(Voyager::TangentRotation(Up,GetActorForwardVector()));
-        if(IsLocallyControlled())Tool->SetVisibility(bMining||MiningFeedback>.05f,true);
+        if(IsLocallyControlled())Tool->SetVisibility(HeldSupply<0&&(bMining||MiningFeedback>.05f),true);
     }
     Super::Tick(D);ScanPulse=FMath::Max(0.f,ScanPulse-D*.42f);MiningFeedback=FMath::Max(0.f,MiningFeedback-D);
     if(IsLocallyControlled())
@@ -230,6 +285,7 @@ void AVoyagerCharacter::ServerScan_Implementation()
 }
 void AVoyagerCharacter::ServerMine_Implementation(FVector_NetQuantizeNormal Direction)
 {
+    if(HeldSupply>=0)return;
     if(!CanAct()||Direction.ContainsNaN()||!FMath::IsNearlyEqual(Direction.SizeSquared(),1.f,.02f)||GetWorld()->TimeSeconds-LastServerShot<.19f)return;
     if(bWeaponMode)
     {
@@ -257,7 +313,24 @@ void AVoyagerCharacter::MiningBeam_Implementation(FVector End,bool Success)
     if(auto Sound=LoadObject<USoundBase>(nullptr,TEXT("/Game/Audio/S_Gun.S_Gun")))UGameplayStatics::PlaySoundAtLocation(this,Sound,Start,.12f,1.8f);
 }
 
-void AVoyagerController::BeginPlay(){Super::BeginPlay();GetWorld()->GetWorldSettings()->bEnableWorldBoundsChecks=false;if(IsLocalController()){SetInputMode(FInputModeGameOnly());bShowMouseCursor=false;}}
+void AVoyagerController::BeginPlay(){Super::BeginPlay();GetWorld()->GetWorldSettings()->bEnableWorldBoundsChecks=false;if(IsLocalController()){
+    SetInputMode(FInputModeGameOnly());bShowMouseCursor=false;
+    GConfig->GetInt(TEXT("Voyager.Graphics"),TEXT("Quality"),GraphicsLevel,GGameUserSettingsIni);
+    FParse::Value(FCommandLine::Get(),TEXT("VoyagerQuality="),GraphicsLevel);
+    ApplyGraphics(GraphicsLevel,false);
+}}
+void AVoyagerController::ApplyGraphics(int32 Level,bool bSave)
+{
+    if(!IsLocalController()||!GEngine)return;
+    GraphicsLevel=FMath::Clamp(Level,0,2);
+    if(auto Settings=GEngine->GetGameUserSettings()){
+        Settings->SetOverallScalabilityLevel(GraphicsLevel);Settings->SetResolutionScaleValueEx(100.f);Settings->ApplyNonResolutionSettings();
+    }
+    if(bSave){GConfig->SetInt(TEXT("Voyager.Graphics"),TEXT("Quality"),GraphicsLevel,GGameUserSettingsIni);GConfig->Flush(false,GGameUserSettingsIni);}
+}
+FString AVoyagerController::GraphicsLabel() const
+{static const TCHAR* Names[]={TEXT("LOW"),TEXT("MEDIUM"),TEXT("HIGH")};return FString::Printf(TEXT("GRAPHICS: %s  /  CLICK TO CHANGE"),Names[FMath::Clamp(GraphicsLevel,0,2)]);}
+void AVoyagerController::CycleGraphics(){ApplyGraphics((GraphicsLevel+1)%3,true);}
 void AVoyagerController::UpdateRotation(float D)
 {
     auto Explorer=Cast<AVoyagerCharacter>(GetPawn());auto State=GetWorld()->GetGameState<AVoyagerState>();
@@ -342,6 +415,7 @@ void AVoyagerController::ShowMenu()
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(13).OnClicked_Lambda([this](){HideMenu();return FReply::Handled();})[Label(TEXT("CONTINUE EXPEDITION"),17)]]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){ServerSave();HideMenu();return FReply::Handled();})[Label(TEXT("SAVE EXPEDITION   /   F5"),14)]]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){ServerUpgrade();HideMenu();return FReply::Handled();})[Label(TEXT("UPGRADE LASERS   /   75 MINERALS   /   U"),14)]]
+      +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){CycleGraphics();return FReply::Handled();})[SNew(STextBlock).Text_Lambda([this](){return FText::FromString(GraphicsLabel());}).Font(FCoreStyle::GetDefaultFontStyle("Regular",14))]]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){ServerSave();HideMenu();UGameplayStatics::OpenLevel(this,TEXT("/Game/Maps/Forest"),true,TEXT("game=/Script/Riftbound.VoyagerGameMode?listen"));return FReply::Handled();})[Label(TEXT("HOST CO-OP EXPEDITION"),14)]]
       +SVerticalBox::Slot().AutoHeight().Padding(0,14,0,4)[Label(TEXT("Join a host IP  /  shared star system  /  up to 4 players"),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SAssignNew(AddressBox,SEditableTextBox).Text(FText::FromString(TEXT("127.0.0.1"))).Font(FCoreStyle::GetDefaultFontStyle("Regular",16))]
@@ -490,7 +564,12 @@ void AVoyagerController::RunProbe(float D)
         if(Altitude<Voyager::AtmosphereHeight&&Altitude>1000000)Capture(8);
         if(Altitude<500)
         {
-            Ship->ClearFlightTestInput();Pass(TEXT("SEAMLESS_DESCENT"));Pass(TEXT("PLANET_LANDING"));
+            Ship->ClearFlightTestInput();
+            // Release descent and let the real flight state settle before requesting gear.
+            if(Ship->GetVelocity().Size()>100){LandingSettledAt=0;return;}
+            if(LandingSettledAt==0)LandingSettledAt=TestTime;
+            if(TestTime-LandingSettledAt<.75f)return;
+            Pass(TEXT("SEAMLESS_DESCENT"));Pass(TEXT("PLANET_LANDING"));
             UE_LOG(LogTemp,Display,TEXT("VOYAGER CONTINUITY PASS max_step_cm=%.3f revision=%d"),TestMaxFlightStep,State->Revision);
             Ship->ServerInteract();Advance();
         }
@@ -690,10 +769,10 @@ void AVoyagerController::RunSurfaceAudit(float D)
     }
 }
 
-void AVoyagerCharacter::ToggleWeapon(){if(CanAct())ServerToggleWeapon();}
+void AVoyagerCharacter::ToggleWeapon(){if(CanAct()){bMining=false;ServerToggleWeapon();}}
 void AVoyagerCharacter::ServerToggleWeapon_Implementation()
 {
-    if(!CanAct())return;bWeaponMode=!bWeaponMode;ForceNetUpdate();
+    if(!CanAct())return;HeldSupply=-1;OnRep_HeldSupply();bWeaponMode=!bWeaponMode;ForceNetUpdate();
     if(auto PC=Cast<AVoyagerController>(Controller))PC->Notify(bWeaponMode?TEXT("PULSE SIDEARM / LMB fire. Attacking residents or patrols raises your wanted level. V returns to extraction."):TEXT("EXTRACTION TOOL / LMB mine. V equips pulse sidearm."));
 }
 float AVoyagerCharacter::TakeDamage(float Damage,const FDamageEvent& Event,AController* DamageInstigator,AActor* Causer)

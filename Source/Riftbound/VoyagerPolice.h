@@ -50,6 +50,7 @@ private:
     TWeakObjectPtr<AController> SuspectController;
     TArray<FVector> StreetPath;
     int32 PathCursor=0,SlotIndex=0,Planet=0,Site=0,Fired=0,Hits=0;
+    int32 BuiltVisualKind=INDEX_NONE;
     float Age=0,NextShot=4,NextRoute=0,LostContact=0;
     FVector Velocity=FVector::ZeroVector;
 };

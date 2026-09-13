@@ -266,7 +266,11 @@ Build in this order. Do not reorder.
 
 ## 9. Coexistence with RIFTBOUND
 
-**Current work: Voyager Security 0.9.1, 2026-09-13.** The owner explicitly requested that the
+**Current work: Voyager Production 0.9.2, 2026-09-13.** The owner's master brief prioritizes
+auditing, stability and a measured reference planet before broader feature growth. Its
+autonomous engineering instruction supersedes the earlier routine-choice approval rule.
+Start with [VOYAGER_WORLD_AUDIT.md](docs/VOYAGER_WORLD_AUDIT.md) and the
+[production checklist](docs/phases/VOYAGER_PRODUCTION.md). The owner explicitly requested that the
 attached Living City brief be added **into Riftbound**. This supersedes the previous
 alongside-only restriction and the prohibition on editing Voyager. The original standalone
 Living City mode remains available; it does not run behind Voyager.
@@ -291,17 +295,19 @@ Living City mode remains available; it does not run behind Voyager.
 - The latest request removes jail, arrests and surrender, adds armed drones to wanted response,
   and replaces the police car with an original hover sedan. Legacy sentences are ignored and
   cleared on save. This overrides every earlier Voyager custody requirement.
-- Existing authoritative Voyager actors own building integrity, police pursuit and animal
-  combat. Chaos animates temporary debris; it never decides saved building damage or writes
-  to `LivingCitySim`. This milestone does not implement the pure structural-support solver,
-  Geometry Collection fracture, civilian traffic, voxel terrain damage or economic disasters.
+- Existing authoritative Voyager actors own police pursuit and animal combat. Building
+  damage now calls the pure bounded `LivingCitySim` regional support rule; actors present
+  and archive its results. Chaos animates temporary debris and never decides saved damage.
+  This is a coarse storey/support abstraction, not a beam-load engineering solver. Geometry
+  Collection fracture, civilian traffic, voxel terrain damage and economic disasters remain open.
 - Anomaly and distant orbital cloud materials are original procedural implementations.
   Volume weather uses a project material instance of the installed native Unreal cloud
   material; credit that engine parent separately in `Art/Cosmos/PROVENANCE.md`.
   No paid Fab plugin or asset was acquired for this pass. Black-hole disk/halo
   presentation is a visual approximation with a gameplay hazard, not general-relativistic
   ray tracing or an astrophysical gravity simulation.
-- Current milestone and verification checklist: [VOYAGER_SECURITY.md](docs/phases/VOYAGER_SECURITY.md).
+- Current milestone and verification checklist: [VOYAGER_PRODUCTION.md](docs/phases/VOYAGER_PRODUCTION.md).
+  Version 0.9.1 evidence is retained in [VOYAGER_SECURITY.md](docs/phases/VOYAGER_SECURITY.md).
   Version 0.9 evidence is retained in [VOYAGER_FRONTIERS.md](docs/phases/VOYAGER_FRONTIERS.md).
   Version 0.8 evidence is retained in [VOYAGER_CITY_LIFE.md](docs/phases/VOYAGER_CITY_LIFE.md).
   Earlier `PHASE_*.md` files describe the separate Living City mode and historical milestones;

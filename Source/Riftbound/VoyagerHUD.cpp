@@ -223,9 +223,12 @@ void AVoyagerHUD::DrawHUD()
         Bar(49, VH - 63, 256, Explorer->Health / 100.f, Explorer->Health < 30 ? Amber : Mint);
 
         Panel(VW - 322, VH - 155, 290, 109);
-        Text(Explorer->bWeaponMode?TEXT("PULSE SIDEARM"):TEXT("TERRAIN MULTITOOL"), VW - 305, VH - 140, .57f, Muted);
-        Text(Explorer->bWeaponMode?TEXT("LMB  FIRE / V  HOLSTER"):TEXT("LMB EXTRACT / V ARM"), VW - 305, VH - 111, .82f, White);
-        Text(Explorer->bWeaponMode?(PC->ReloadRemaining>0?FString::Printf(TEXT("RELOADING  %.1f s"),PC->ReloadRemaining):FString::Printf(TEXT("%02d / %03d CELLS   R RELOAD"),PC->Magazine,Expedition?Expedition->ItemCount(EVoyagerItem::EnergyCell):0)):TEXT("F SCAN   /   I BACKPACK"), VW - 305, VH - 76, .55f, Mint);
+        const bool Held=Explorer->HeldSupply>=0&&Explorer->HeldSupply<int32(EVoyagerItem::Count);
+        const auto Supply=EVoyagerItem(Explorer->HeldSupply);
+        Text(Held?VoyagerItems::Name(Supply):Explorer->bWeaponMode?TEXT("PULSE SIDEARM"):TEXT("TERRAIN MULTITOOL"), VW - 305, VH - 140, .57f, Muted);
+        const bool Usable=Held&&(Supply==EVoyagerItem::RawMeat||Supply==EVoyagerItem::CookedMeat||Supply==EVoyagerItem::Medkit||Supply==EVoyagerItem::DemolitionCharge);
+        Text(Held?(Usable?TEXT("LMB USE / Q NEXT"):TEXT("I CRAFT / Q NEXT")):Explorer->bWeaponMode?TEXT("LMB FIRE / V HOLSTER"):TEXT("LMB EXTRACT / V ARM"), VW - 305, VH - 111, .82f, White);
+        Text(Held?FString::Printf(TEXT("%d IN PACK   /   V SIDEARM"),Expedition?Expedition->ItemCount(Supply):0):Explorer->bWeaponMode?(PC->ReloadRemaining>0?FString::Printf(TEXT("RELOADING  %.1f s"),PC->ReloadRemaining):FString::Printf(TEXT("%02d / %03d CELLS   R RELOAD"),PC->Magazine,Expedition?Expedition->ItemCount(EVoyagerItem::EnergyCell):0)):TEXT("F SCAN / I PACK / Q EQUIP"), VW - 305, VH - 76, .55f, Mint);
 
         Action = TEXT("EXPLORE  /  SCAN  /  COLLECT");
         SubAction = TEXT("WASD move   -   SHIFT sprint   -   SPACE jump   -   C camera");

@@ -583,11 +583,21 @@ void AVoyagerWorld::BuildLighting()
     auto* Post = Component<UPostProcessComponent>(this, TEXT("VoyagerExposure"), SceneComponents);
     Post->bUnbound = true;
     Post->Settings.bOverride_AutoExposureMethod = true;
-    Post->Settings.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
+    Post->Settings.AutoExposureMethod = EAutoExposureMethod::AEM_Histogram;
     Post->Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
     Post->Settings.AutoExposureApplyPhysicalCameraExposure = false;
     Post->Settings.bOverride_AutoExposureBias = true;
     Post->Settings.AutoExposureBias = -.15f;
+    // A restrained four-stop adaptation range keeps interiors readable without
+    // turning the night side into daylight. These are luminance, not EV100 units.
+    Post->Settings.bOverride_AutoExposureMinBrightness = true;
+    Post->Settings.AutoExposureMinBrightness = .08f;
+    Post->Settings.bOverride_AutoExposureMaxBrightness = true;
+    Post->Settings.AutoExposureMaxBrightness = 1.25f;
+    Post->Settings.bOverride_AutoExposureSpeedUp = true;
+    Post->Settings.AutoExposureSpeedUp = 3.f;
+    Post->Settings.bOverride_AutoExposureSpeedDown = true;
+    Post->Settings.AutoExposureSpeedDown = 1.f;
     Post->Settings.bOverride_BloomIntensity = true;
     Post->Settings.BloomIntensity = .12f;
     Post->Settings.bOverride_VignetteIntensity = true;

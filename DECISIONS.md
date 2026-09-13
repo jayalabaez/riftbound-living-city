@@ -866,3 +866,59 @@ use three authored LODs and existing project PBR material parents. Their source 
 reproducible import script and provenance ship with the public project. No marketplace
 purchase is needed; this is an art and pursuit upgrade, not civilian traffic or a playable
 car interior. Validation lives in `docs/phases/VOYAGER_SECURITY.md`.
+
+## D-033 — Production audit, safe landing and measured graphics tiers — 2026-09-13
+
+The owner's master production brief prioritizes a coherent, measured reference planet
+over more disconnected features. `docs/VOYAGER_WORLD_AUDIT.md` is the baseline inventory;
+`docs/phases/VOYAGER_PRODUCTION.md` tracks the first foundation slice and its limitations.
+The independent Living City mode and existing Voyager architecture remain intact.
+
+Landing suitability is a pure quantized observation rule in `LivingCitySim`. The host
+samples spherical terrain and queries obstacles; the rule never reads Chaos or owns a
+physics object. Persistent city state remains independent of rendering/physics. Landing
+checks nine supports and the full airframe. Exit checks are bounded to eight floor-backed
+capsule routes, with no forced spawn. JSON provides reviewed safety thresholds.
+
+Modular builds alone define shared-library imports/exports. Graphics tiers use Unreal's
+existing scalability and local user settings rather than another manager. They control
+render cost without changing collision or authoritative population. The benchmark records
+what the RHI actually measures; unavailable GPU information is not reported as zero cost.
+Visual review and controlled-flight tests remain distinct from static scene timings.
+
+## D-034 — Shared furniture frames, field supply presentation and bounded support failure — 2026-09-13
+
+The immediate regressions were chairs facing away from tables, all-sided emissive
+monitors and supplies represented only in menus. Furniture now composes in one local
+frame from its seated user toward its table. The building's radial frame is applied
+once. Whole assemblies reserve stair clearance, retaining existing instancing and
+stable building IDs. Original supply geometry is shared by held equipment and placed
+charges; it adds no new inventory type or parallel transaction path.
+
+Q/V/held-use commands share the character's ordered RPC channel. The server checks
+the expected selected item and its owned quantity before forwarding to the existing
+atomic survival transaction. Backpack actions retain their normal availability.
+Selection is temporary presentation; inventory remains saved by the existing system.
+
+Aggregate integrity alone could not express a localized structural failure. The
+chosen abstraction in `Sim/include/livingcity/destruct/BuildingStructure.h` is a
+bounded chain of up to 18 storeys, with four quantized support regions per storey.
+Integer damage and required support counts decide the surviving floor ceiling.
+The host supplies quantized impacts; physics never supplies damage or collapse results.
+JSON configures support strength, redundancy and bounded debris presentation.
+
+A full beam/column engineering solver and runtime Geometry Collection fracture were
+considered unnecessary for this slice. The coarse model preserves old aggregate
+integrity thresholds while enabling local failure at otherwise high integrity. Its
+tradeoff is whole-storey removal, not room-scale fracture or load redistribution.
+Save schema 5 adds support deltas and a non-increasing collapse ceiling. Empty support
+arrays from older saves preserve integrity/glass behavior; malformed arrays are rejected
+with a diagnostic. Each affected record adds at most 72 uint16 values plus one int32.
+
+Existing Chaos rigid bodies receive material density, friction, restitution, damping
+and mass-dependent momentum. The 96-body cap and 45-second upper lifetime remain;
+at capacity, actors are reused with a new replicated generation and reset pose.
+Debris ignores pawn/dynamic and visibility collision, cannot change saved damage,
+and clients present server poses without running their own rubble collision.
+No paid plugin or new engine framework is required. Existing cuboid fragments are
+the fallback presentation; this is not a Voronoi fracture implementation.

@@ -2,9 +2,12 @@
 #include "VoyagerCityLife.h"
 #include "VoyagerGameMode.h"
 #include "VoyagerItems.h"
+#include "VoyagerItemVisuals.h"
 #include "VoyagerLaw.h"
 #include "VoyagerShip.h"
 #include "VoyagerData.h"
+#include "Camera/CameraComponent.h"
+#include "ProceduralMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/World.h"
 #include "Engine/DamageEvents.h"
@@ -23,6 +26,9 @@ namespace VoyagerSurvivalAudit
         int32 Stage=0,Checks=0,BeforeMinerals=0;TArray<int32> BeforeItems;
         double Started=0,StageTime=0;float BeforeHealth=0;bool Finished=false;
         uint64 BeforeProcessed=0;
+        int32 EquipmentCycle=0;
+        TArray<int32> OwnedSupplies;
+        TWeakObjectPtr<UProceduralMeshComponent> HeldModel;
     };
     TUniquePtr<FRun> Run;
     void Pass(const TCHAR* Name){++Run->Checks;UE_LOG(LogTemp,Display,TEXT("VOYAGER SURVIVAL AUDIT PASS %s"),Name);}
@@ -30,6 +36,27 @@ namespace VoyagerSurvivalAudit
     void Advance(double Now){++Run->Stage;Run->StageTime=Now;}
     void Before(AVoyagerPlayerState* PS){Run->BeforeItems=PS->Items;Run->BeforeMinerals=PS->Minerals;}
     bool Unchanged(AVoyagerPlayerState* PS){return PS->Items==Run->BeforeItems&&PS->Minerals==Run->BeforeMinerals;}
+    bool SupplyModel(AVoyagerCharacter* Pawn,bool bExpected,UProceduralMeshComponent*& Out)
+    {
+        Out=nullptr;int32 Count=0;
+        TInlineComponentArray<UProceduralMeshComponent*> Components(Pawn);
+        for(auto* Component:Components)
+            if(IsValid(Component)&&Component->GetAttachParent()==Pawn->Camera)
+            {++Count;Out=Component;}
+        const bool bRenderedWorld=Pawn->GetNetMode()!=NM_DedicatedServer;
+        if(Count!=(bExpected&&bRenderedWorld?1:0))return false;
+        if(!Out)return true;
+        if(!Out->IsRegistered()||Out->GetCollisionEnabled()!=ECollisionEnabled::NoCollision||
+            !Out->bOnlyOwnerSee||Out->GetNumSections()<1||Out->GetNumSections()>3)return false;
+        int32 Triangles=0;
+        for(int32 Index=0;Index<Out->GetNumSections();++Index)
+        {
+            const FProcMeshSection* Section=Out->GetProcMeshSection(Index);
+            if(!Section||Section->ProcVertexBuffer.IsEmpty()||Section->ProcIndexBuffer.IsEmpty()||Section->ProcIndexBuffer.Num()%3!=0)return false;
+            Triangles+=Section->ProcIndexBuffer.Num()/3;
+        }
+        return Triangles>0&&Triangles<=3000;
+    }
     bool HealthMatches(AVoyagerCityLife* Life,AVoyagerController* PC,AVoyagerCharacter* Pawn,int32 Expected,uint64 MinimumProcessed)
     {
         const auto View=Life->BuildView(PC);
@@ -66,7 +93,7 @@ namespace VoyagerSurvivalAudit
         }
         if(Run->World.Get()!=World||Run->Finished)return;
         const double Now=FPlatformTime::Seconds(),Elapsed=Now-Run->StageTime;
-        if(Now-Run->Started>70){Fail(TEXT("TIMEOUT"));return;}
+        if(Now-Run->Started>90){Fail(TEXT("TIMEOUT"));return;}
         auto* PC=Run->PC.Get();auto* Pawn=PC?Cast<AVoyagerCharacter>(PC->GetPawn()):nullptr;
         auto* PS=PC?PC->GetPlayerState<AVoyagerPlayerState>():nullptr;auto* GM=World->GetAuthGameMode<AVoyagerGameMode>();auto* State=World->GetGameState<AVoyagerState>();
         auto* Life=AVoyagerCityLife::Find(World);
@@ -246,8 +273,95 @@ namespace VoyagerSurvivalAudit
             Pass(TEXT("LEGACY_SENTENCE_DOES_NOT_BLOCK_CARE"));Advance(Now);return;
         }
         case 22:
+        {
             if(Elapsed<3)return;
             if(!HealthMatches(Life,PC,Pawn,55,0)){Fail(TEXT("CARE_HEALTH_NOT_PERSISTED"));return;}
+            // Validate the native builder itself, including ingredients that the
+            // preceding health fixtures have already consumed from the backpack.
+            static const TCHAR* GeometryChecks[]={TEXT("ITEM_GEOMETRY_RAW_MEAT"),TEXT("ITEM_GEOMETRY_COOKED_MEAT"),
+                TEXT("ITEM_GEOMETRY_HIDE"),TEXT("ITEM_GEOMETRY_BONE"),TEXT("ITEM_GEOMETRY_MEDKIT"),
+                TEXT("ITEM_GEOMETRY_DEMOLITION_CHARGE"),TEXT("ITEM_GEOMETRY_ENERGY_CELL")};
+            for(int32 Item=0;Item<int32(EVoyagerItem::Count);++Item)
+            {
+                FString Failure;
+                if(!VoyagerItemVisuals::ValidateGeometry(EVoyagerItem(Item),Failure))
+                {UE_LOG(LogTemp,Error,TEXT("VOYAGER SURVIVAL ITEM_GEOMETRY item=%d reason=%s"),Item,*Failure);Fail(TEXT("ITEM_GEOMETRY_INVALID"));return;}
+                Pass(GeometryChecks[Item]);
+                if(PS->ItemCount(EVoyagerItem(Item))>0)Run->OwnedSupplies.Add(Item);
+            }
+            if(Pawn->HeldSupply!=-1||Pawn->bWeaponMode||PS->ItemCount(EVoyagerItem::CookedMeat)!=0||
+                PS->ItemCount(EVoyagerItem::Medkit)!=1||Run->OwnedSupplies.IsEmpty())
+            {Fail(TEXT("EQUIPMENT_FIXTURE_STATE"));return;}
+            Run->OwnedSupplies.Add(-1);Before(PS);Advance(Now);return;
+        }
+        case 23:
+        {
+            if(Elapsed<.35)return;
+            const int32 Expected=Run->OwnedSupplies[Run->EquipmentCycle];
+            const TWeakObjectPtr<UProceduralMeshComponent> Previous=Run->HeldModel;
+            Pawn->ServerCycleSupply();UProceduralMeshComponent* Model=nullptr;
+            if(Pawn->HeldSupply!=Expected||Pawn->bWeaponMode||!Unchanged(PS)||!SupplyModel(Pawn,Expected>=0,Model)||Previous.IsValid())
+            {Fail(TEXT("EQUIP_OWNERSHIP_OR_MODEL_LIFETIME"));return;}
+            Run->HeldModel=Model;
+            // Two real reliable authority calls in the same frame must not skip
+            // an item or replace its mesh during the equipment cooldown.
+            Pawn->ServerCycleSupply();UProceduralMeshComponent* RepeatedModel=nullptr;
+            if(Pawn->HeldSupply!=Expected||!Unchanged(PS)||!SupplyModel(Pawn,Expected>=0,RepeatedModel)||RepeatedModel!=Model)
+            {Fail(TEXT("REPEATED_EQUIP_CHANGED_SELECTION"));return;}
+            if(++Run->EquipmentCycle<Run->OwnedSupplies.Num()){Run->StageTime=Now;return;}
+            Pass(TEXT("OWNED_SUPPLY_CYCLE_SKIPS_EMPTY_STACKS"));
+            Pass(TEXT("RAPID_REPEATED_EQUIP_REJECTED"));
+            Pass(TEXT("EQUIP_PRESERVES_INVENTORY"));
+            Pass(TEXT("HELD_VISUAL_COMPONENTS_BOUNDED"));
+            Run->EquipmentCycle=0;Advance(Now);return;
+        }
+        case 24:
+        {
+            if(Elapsed<.35)return;
+            Pawn->ServerCycleSupply();
+            if(!Unchanged(PS)||++Run->EquipmentCycle>int32(EVoyagerItem::Count)+1)
+            {Fail(TEXT("MEDKIT_EQUIP_ROUTE"));return;}
+            if(Pawn->HeldSupply!=int32(EVoyagerItem::Medkit)){Run->StageTime=Now;return;}
+            UProceduralMeshComponent* Model=nullptr;
+            if(!SupplyModel(Pawn,true,Model)){Fail(TEXT("HELD_MEDKIT_MODEL"));return;}
+            Run->HeldModel=Model;Capture(TEXT("HeldMedkit"));Advance(Now);return;
+        }
+        case 25:
+        {
+            if(Elapsed<1.2)return;
+            Before(PS);Run->BeforeHealth=Pawn->Health;
+            // Raw meat remains owned, so absence of the stale item cannot mask a
+            // broken selection check. Its accidental use would also cost health.
+            if(PS->ItemCount(EVoyagerItem::RawMeat)<=0){Fail(TEXT("STALE_EQUIP_FIXTURE"));return;}
+            for(int32 Invalid:{int32(EVoyagerItem::RawMeat),-1,int32(EVoyagerItem::Count),MAX_int32})
+                Pawn->ServerUseHeldSupply(Invalid);
+            if(!Unchanged(PS)||Pawn->HeldSupply!=int32(EVoyagerItem::Medkit)||!FMath::IsNearlyEqual(Pawn->Health,Run->BeforeHealth))
+            {Fail(TEXT("STALE_HELD_USE_SPENT_AN_ITEM"));return;}
+            Pass(TEXT("HELD_USE_REJECTS_STALE_SELECTION"));
+            Run->BeforeProcessed=Life->BuildView(PC).ProcessedInput;
+            Pawn->ServerUseHeldSupply(int32(EVoyagerItem::Medkit));
+            TArray<int32> Expected=Run->BeforeItems;--Expected[int32(EVoyagerItem::Medkit)];
+            UProceduralMeshComponent* Model=nullptr;
+            if(PS->Items!=Expected||PS->Minerals!=Run->BeforeMinerals||Pawn->HeldSupply!=-1||
+                Run->HeldModel.IsValid()||!SupplyModel(Pawn,false,Model))
+            {Fail(TEXT("DEPLETED_HELD_MEDKIT_NOT_CLEARED"));return;}
+            Pass(TEXT("HELD_MEDKIT_CONSUMES_ONE_AND_CLEARS_VISUAL"));Advance(Now);return;
+        }
+        case 26:
+        {
+            if(Elapsed<1.2)return;
+            if(!HealthMatches(Life,PC,Pawn,90,Run->BeforeProcessed+1)){Fail(TEXT("HELD_MEDKIT_CORE_HEALTH"));return;}
+            Pass(TEXT("HELD_CARE_USES_AUTHORITATIVE_HEALTH"));Before(PS);
+            Pawn->ServerCycleSupply();UProceduralMeshComponent* Model=nullptr;
+            if(Pawn->HeldSupply<0||PS->ItemCount(EVoyagerItem(Pawn->HeldSupply))<=0||!SupplyModel(Pawn,true,Model))
+            {Fail(TEXT("SIDEARM_SWITCH_EQUIPMENT_FIXTURE"));return;}
+            Run->HeldModel=Model;Pawn->ToggleWeapon();
+            if(!Pawn->bWeaponMode||Pawn->HeldSupply!=-1||Run->HeldModel.IsValid()||!SupplyModel(Pawn,false,Model)||!Unchanged(PS))
+            {Fail(TEXT("SIDEARM_SWITCH_RETAINS_SUPPLY_MODEL"));return;}
+            Pass(TEXT("SIDEARM_SWITCH_CLEARS_SUPPLY_VISUAL"));Advance(Now);return;
+        }
+        case 27:
+            if(Elapsed<1)return;
             Run->Finished=true;UE_LOG(LogTemp,Display,TEXT("VOYAGER SURVIVAL AUDIT COMPLETE PASS checks=%d seconds=%.2f"),Run->Checks,Now-Run->Started);
             FPlatformMisc::RequestExit(false);return;
         default:Fail(TEXT("INVALID_STAGE"));return;
