@@ -53,9 +53,21 @@ void AVoyagerPoliceUnit::BuildVisuals()
 {
     Collision->SetSphereRadius(bDrone?70.f:bVehicle?220.f:85.f);Collision->SetRelativeLocation(FVector(0,0,bDrone?0:bVehicle?60:90));
     if(GetNetMode()==NM_DedicatedServer)return;
-    TArray<USceneComponent*> Old;VisualRoot->GetChildrenComponents(true,Old);for(int32 I=Old.Num()-1;I>=0;--I)Old[I]->DestroyComponent();Body=nullptr;
-    auto Part=[&](const TCHAR* Name,const TCHAR* Shape,FVector At,FVector Scale,FLinearColor Color,bool Glow=false){return RiftVisual::Mesh(this,VisualRoot,FName(Name),Shape,At,Scale,Color,Glow);};
-    const FLinearColor Armor(.045f,.07f,.09f),Steel(.26f,.3f,.34f),Blue(.015f,.24f,1.f),Red(1.f,.015f,.01f);
+    const int32 Kind=bDrone?2:bVehicle?1:0;
+    // SpawnActor calls BeginPlay before Assign. Reassigning a suspect or receiving
+    // both replicated kind flags must retain the existing presentation components.
+    if(BuiltVisualKind==Kind)return;
+    TArray<USceneComponent*> Old;VisualRoot->GetChildrenComponents(true,Old);
+    for(int32 I=Old.Num()-1;I>=0;--I){RemoveInstanceComponent(Old[I]);Old[I]->DestroyComponent();}
+    Body=nullptr;BuiltVisualKind=Kind;
+    auto Part=[&](const TCHAR* Name,const TCHAR* Shape,FVector At,FVector Scale,FLinearColor Color,bool Glow=false)
+    {
+        // DestroyComponent defers render-resource cleanup. A later kind change
+        // needs a fresh UObject name instead of synchronously overwriting it.
+        auto* Component=RiftVisual::Mesh(this,VisualRoot,MakeUniqueObjectName(this,UStaticMeshComponent::StaticClass(),FName(Name)),Shape,At,Scale,Color,Glow);
+        Component->ComponentTags.Add(FName(Name));AddInstanceComponent(Component);return Component;
+    };
+    const FLinearColor Armor(.045f,.07f,.09f),Steel(.26f,.3f,.34f);
     if(bVehicle||bDrone)
     {
         auto Mesh=LoadObject<UStaticMesh>(nullptr,bDrone?TEXT("/Game/Security/SM_SentinelDrone.SM_SentinelDrone"):TEXT("/Game/Security/SM_VesperCruiser.SM_VesperCruiser"));
@@ -78,7 +90,8 @@ void AVoyagerPoliceUnit::BuildVisuals()
         auto Mesh=LoadObject<USkeletalMesh>(nullptr,TEXT("/Game/Characters/Import/Guard/CitizenGuard/SkeletalMeshes/CitizenGuard.CitizenGuard"));
         if(Mesh)
         {
-            Body=NewObject<USkeletalMeshComponent>(this,TEXT("SecurityOfficer"));Body->SetupAttachment(VisualRoot);Body->SetSkeletalMeshAsset(Mesh);
+            Body=NewObject<USkeletalMeshComponent>(this,MakeUniqueObjectName(this,USkeletalMeshComponent::StaticClass(),TEXT("SecurityOfficer")));
+            Body->ComponentTags.Add(TEXT("SecurityOfficer"));Body->SetupAttachment(VisualRoot);Body->SetSkeletalMeshAsset(Mesh);
             Body->SetRelativeRotation(FRotator(0,-90,0));Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);Body->SetAnimationMode(EAnimationMode::AnimationSingleNode);Body->RegisterComponent();AddInstanceComponent(Body);
             IdleClip=LoadObject<UAnimationAsset>(nullptr,TEXT("/Game/Characters/Import/Guard/CitizenGuard/SkeletalMeshes/CitizenGuardA_CitizenGuard_Idle.CitizenGuardA_CitizenGuard_Idle"));
             RunClip=LoadObject<UAnimationAsset>(nullptr,TEXT("/Game/Characters/Import/Guard/CitizenGuard/SkeletalMeshes/CitizenGuardA_CitizenGuard_Run.CitizenGuardA_CitizenGuard_Run"));

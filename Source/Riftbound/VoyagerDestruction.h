@@ -6,6 +6,7 @@ class UStaticMeshComponent;
 class UVoyagerSave;
 class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
+class UPhysicalMaterial;
 
 USTRUCT()
 struct FVoyagerBuildingDamage
@@ -17,6 +18,9 @@ struct FVoyagerBuildingDamage
     UPROPERTY() int32 Building=0;
     UPROPERTY() float Integrity=1200;
     UPROPERTY() uint32 BrokenGlassFloors=0;
+    // Additive seed-delta fields. Empty supports preserve pre-support save records.
+    UPROPERTY() TArray<uint16> SupportDamage;
+    UPROPERTY() int32 CollapsedFromFloor=18;
     bool Matches(int32 S,int32 P,int32 C,int32 B) const{return System==S&&Planet==P&&Site==C&&Building==B;}
 };
 
@@ -28,7 +32,7 @@ class RIFTBOUND_API AVoyagerDebris : public AActor
 public:
     AVoyagerDebris();
     virtual void BeginPlay() override;
-    void InitializePiece(const FTransform& Transform,FLinearColor Color,FVector Impulse,int32 System,int32 Planet);
+    void InitializePiece(const FTransform& Transform,FLinearColor Color,FVector Impulse,int32 System,int32 Planet,bool bGlass=false);
     virtual void Tick(float D) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Body;
@@ -37,8 +41,12 @@ private:
     UPROPERTY(Replicated) FQuat Rotation=FQuat::Identity;
     UPROPERTY(ReplicatedUsing=OnRep_Appearance) FVector Scale=FVector::OneVector;
     UPROPERTY(ReplicatedUsing=OnRep_Appearance) FLinearColor Tint=FLinearColor(.3f,.31f,.3f);
+    UPROPERTY(ReplicatedUsing=OnRep_Appearance) bool bGlassPiece=false;
+    UPROPERTY(ReplicatedUsing=OnRep_Recycled) uint16 PieceSerial=0;
+    UPROPERTY() TObjectPtr<UPhysicalMaterial> ContactMaterial;
     UFUNCTION() void OnRep_Appearance();
     UFUNCTION() void OnRep_Position();
+    UFUNCTION() void OnRep_Recycled();
     bool bReceivedPosition=false;
     int32 System=1,Planet=0;
     float Age=0;
@@ -104,4 +112,5 @@ private:
     UPROPERTY() TArray<TObjectPtr<AVoyagerDebris>> Debris;
     UPROPERTY() TArray<TObjectPtr<AVoyagerBlastCloud>> DustClouds;
     int32 ActiveSystem=INDEX_NONE;
+    int32 NextRecycledPiece=0;
 };

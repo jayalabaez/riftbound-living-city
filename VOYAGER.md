@@ -29,6 +29,7 @@ These settings change rendering quality, not simulation populations or collision
 - **N** cycles the city entrance guide: home, workplace, nearest market, nearest Civic Security, then off. It appears on foot near a city with the phone closed. The marker names the building, measures entrance distance and points toward offscreen entrances.
 - **F5** saves the expedition. **Escape** opens the menu.
 - **I** opens the backpack; **1–8** selects food, crafting and equipment actions. **I**, **Escape** or **Backspace** closes it; **P** switches to the city phone.
+- **Q** cycles owned supplies and returns to the extraction tool at the end. **Left mouse** uses held food, medicine or a charge through the same backpack actions. Hide, bone and energy cells are crafting/ammunition supplies. **V** puts the supply away and equips the sidearm.
 - **R** reloads the sidearm's 24-shot magazine in 1.4 seconds. Each shot consumes one energy cell; the backpack can craft more.
 
 ## Flying
@@ -90,7 +91,9 @@ Hunt wildlife with the sidearm, approach an unharvested carcass, and press **E**
 
 The **I** backpack has seven item stacks and eight actions. **1** eats raw meat, restoring 20 nourishment while costing 8 health. **2** cooks one raw meat with one mineral beside your landed ship (within 12 m), or inside a cafe or residence. **3** eats cooked meat for 50 nourishment, 8 hydration and 8 health. **4** crafts a medkit from two hide, two bone and five minerals; **5** uses one to restore up to 35 health. **6** crafts a demolition charge from two bone and twelve minerals. **7** attaches a charge to the building surface you aim at within 30 m. **8** crafts thirty energy cells from eight minerals. Recipes validate ingredients and output capacity before charging the inventory.
 
-Charges detonate after three seconds with a 22 m damage radius. Window damage removes glazing at the affected level; structural damage removes upper floors as integrity falls and can demolish the building. A maximum of 96 temporary debris actors use Unreal's native Chaos rigid-body simulation and radial gravity. Building integrity and glass flags are authoritative saved deltas; debris transforms do not decide the persistent structure. This is component-based building damage and debris, not Geometry Collection fracture, voxel excavation, fire propagation or a building-support engineering solver.
+Charges detonate after three seconds with a 22 m damage radius. Window damage removes glazing at the affected level. Structural damage affects four support regions per floor: by default, losing two removes that floor and everything above it. Existing aggregate integrity thresholds still apply. Services stop in fully collapsed buildings, even when their aggregate integrity remains positive.
+
+A maximum of 96 temporary fragments use Unreal's native Chaos rigid-body simulation and radial gravity. Glass and concrete have different density, friction, bounce, damping and mass-dependent impulse response. At capacity, debris actors are reused. Integrity, glass and support damage are saved; rubble motion never decides the structure. This is a coarse support model with cuboid fragments, not Geometry Collection fracture, voxel excavation, fire propagation or an engineering load solver. Schema 5 preserves older integrity/glass saves with empty support deltas.
 
 ## Combat and progression
 

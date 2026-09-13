@@ -255,3 +255,25 @@ DLL. A two-player flight regression reached the destination but did not complete
 the settling change cannot yet be re-tested. Final qualification therefore remains open.
 The source builds and earlier successful runs must not be presented as a finished
 reference planet or a fully tested release.
+
+## Furniture, supplies and support follow-up — 2026-09-13
+
+The next review slice fixes table-facing chairs, user-facing monitor panels and supported
+keyboard/mouse placement in ground and upper-floor interiors. Seven original supply models
+now connect to owned equipment and the existing atomic actions. A pure integer rule in the
+simulation library adds localized regional support failure, while bounded native Chaos
+fragments gain material-specific response and reuse at capacity. Service access and blast
+intersection now use surviving structure. The pre-change matrix above remains historical.
+
+Six additional structural tests bring the pure suite to 216. The Unreal audits now inspect
+generated furniture transforms, live held components, item selection/depletion, support
+collision, disk deltas, legacy restore and physics reuse. Their implementation is not proof
+of a passing runtime; the production checklist records current execution evidence.
+
+Current qualification supersedes the earlier execution block: rebuilt editor and packaged
+binaries ran without changing Windows security settings. Three-seed safety/city checks,
+two-player flight, rendered survival, network destruction with replicated support/pose
+checks, nature validation and rendered surface-to-space ascent passed with normal saves
+preserved. Full-resolution Low/Medium/High settled benchmarks and inspected screenshots
+are recorded in the [production report](phases/VOYAGER_PRODUCTION.md). The broader reference
+planet and four-player/mid-range/long-session qualification remain unfinished.

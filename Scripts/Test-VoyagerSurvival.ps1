@@ -29,7 +29,7 @@ if($Packaged){$arguments=$arguments[1..($arguments.Length-1)]}
 if($Render){$arguments+=@('-windowed','-ResX=1280','-ResY=720','-VoyagerSurvivalCapture')}else{$arguments+='-NullRHI'}
 $before=@(Save-Hashes);$owned=$null;$failure=$null;$checks=[ordered]@{};$log=''
 $clock=[Diagnostics.Stopwatch]::StartNew()
-$pattern='VOYAGER SURVIVAL AUDIT FAIL\b|VOYAGER SURVIVAL MISSING|Fatal error\b|LowLevelFatalError|Assertion failed\b|Ensure condition failed|Failed to compile Material|missing usage flag'
+$pattern='VOYAGER SURVIVAL AUDIT FAIL\b|VOYAGER SURVIVAL MISSING|VOYAGER ITEM GEOMETRY\b|Fatal error\b|LowLevelFatalError|Assertion failed\b|Ensure condition failed|Failed to compile Material|missing usage flag'
 try{
     $owned=Start-Process -FilePath $executable -ArgumentList $arguments -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
     Write-Host "Survival audit PID $($owned.Id), $variant; evidence $runDirectory"
@@ -51,7 +51,13 @@ try{
         'SAME_FRAME_DAMAGE_MEDKIT_RESTORES_PAWN','LATER_DAMAGE_AFTER_HEAL_STILL_APPLIES',
         'SAME_FRAME_DAMAGE_MEDKIT_DAMAGE_PRESERVES_ORDER','SAME_FRAME_DAMAGE_MEAL_DAMAGE_PRESERVES_ORDER',
         'HEAL_BEFORE_LETHAL_HIT_PREVENTS_FALSE_RECOVERY','DEAD_PLAYER_CARE_REJECTS_WITHOUT_ITEM_LOSS',
-        'LEGACY_SENTENCE_DOES_NOT_BLOCK_CARE')){
+        'LEGACY_SENTENCE_DOES_NOT_BLOCK_CARE',
+        'ITEM_GEOMETRY_RAW_MEAT','ITEM_GEOMETRY_COOKED_MEAT','ITEM_GEOMETRY_HIDE','ITEM_GEOMETRY_BONE',
+        'ITEM_GEOMETRY_MEDKIT','ITEM_GEOMETRY_DEMOLITION_CHARGE','ITEM_GEOMETRY_ENERGY_CELL',
+        'OWNED_SUPPLY_CYCLE_SKIPS_EMPTY_STACKS','RAPID_REPEATED_EQUIP_REJECTED','EQUIP_PRESERVES_INVENTORY',
+        'HELD_VISUAL_COMPONENTS_BOUNDED','HELD_USE_REJECTS_STALE_SELECTION',
+        'HELD_MEDKIT_CONSUMES_ONE_AND_CLEARS_VISUAL','HELD_CARE_USES_AUTHORITATIVE_HEALTH',
+        'SIDEARM_SWITCH_CLEARS_SUPPLY_VISUAL')){
         $checks[$name]=$log -match ("VOYAGER SURVIVAL AUDIT PASS $name\b")
     }
     $checks['COMPLETE']=$log -match 'VOYAGER SURVIVAL AUDIT COMPLETE PASS'
@@ -59,7 +65,7 @@ try{
     $after=@(Save-Hashes);$preserved=$true
     for($i=0;$i -lt $before.Count;$i++){if($before[$i].hash -ne $after[$i].hash){$preserved=$false}}
     $checks['NORMAL_SAVES_UNCHANGED']=$preserved
-    if($Render){foreach($name in @('Backpack','CraftedSupplies')){
+    if($Render){foreach($name in @('Backpack','CraftedSupplies','HeldMedkit')){
         $path=Join-Path $runDirectory ($name+'.png');$checks["CAPTURE_$name"]=(Test-Path -LiteralPath $path) -and (Get-Item -LiteralPath $path).Length -gt 10000
     }}
     if(-not $failure -and @($checks.Values|Where-Object{-not $_}).Count){$failure='Required checks failed: '+(($checks.Keys|Where-Object{-not $checks[$_]}) -join ', ')}

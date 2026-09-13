@@ -250,7 +250,12 @@ and, in 0.9.1, attack drones. Jail has been removed; legacy save sentence fields
 only for compatibility and cleared on the next save. Chaos debris is temporary presentation and never writes into the pure core
 or determines saved structural damage. Original procedural cosmos actors are presentation
 plus a server-owned hazard. This extension is described in D-031 and
-`docs/phases/VOYAGER_FRONTIERS.md`; it is not the planned pure structural-support solver.
+`docs/phases/VOYAGER_FRONTIERS.md`. The production follow-up in D-034 moves bounded regional
+support and surviving-floor decisions into `Sim/include/livingcity/destruct/BuildingStructure.h`.
+The host quantizes impacts and archives returned state; the pure rule uses fixed arrays
+and integer arithmetic. Chaos presents material-specific fragments, while support deltas
+and a collapse ceiling survive in schema 5. This remains a coarse floor chain, not a full
+beam-load solver. Held item geometry and furniture frames are presentation only.
 
 Boundaries that are only written down get violated. These run in CI on every commit.
 

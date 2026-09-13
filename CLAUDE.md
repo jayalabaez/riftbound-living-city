@@ -295,10 +295,11 @@ Living City mode remains available; it does not run behind Voyager.
 - The latest request removes jail, arrests and surrender, adds armed drones to wanted response,
   and replaces the police car with an original hover sedan. Legacy sentences are ignored and
   cleared on save. This overrides every earlier Voyager custody requirement.
-- Existing authoritative Voyager actors own building integrity, police pursuit and animal
-  combat. Chaos animates temporary debris; it never decides saved building damage or writes
-  to `LivingCitySim`. This milestone does not implement the pure structural-support solver,
-  Geometry Collection fracture, civilian traffic, voxel terrain damage or economic disasters.
+- Existing authoritative Voyager actors own police pursuit and animal combat. Building
+  damage now calls the pure bounded `LivingCitySim` regional support rule; actors present
+  and archive its results. Chaos animates temporary debris and never decides saved damage.
+  This is a coarse storey/support abstraction, not a beam-load engineering solver. Geometry
+  Collection fracture, civilian traffic, voxel terrain damage and economic disasters remain open.
 - Anomaly and distant orbital cloud materials are original procedural implementations.
   Volume weather uses a project material instance of the installed native Unreal cloud
   material; credit that engine parent separately in `Art/Cosmos/PROVENANCE.md`.

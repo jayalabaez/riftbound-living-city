@@ -1,6 +1,7 @@
 #include "VoyagerCharacter.h"
 #include "VoyagerHUD.h"
 #include "VoyagerItems.h"
+#include "VoyagerItemVisuals.h"
 #include "VoyagerGameMode.h"
 #include "VoyagerCityLife.h"
 #include "VoyagerSettlement.h"
@@ -126,12 +127,13 @@ void AVoyagerController::ServerSurvivalAction_Implementation(uint8 Action)
     if(bPlaceCharge)
     {
         FActorSpawnParameters Params;Params.Owner=this;Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-        const FVector At=ChargeHit.ImpactPoint+ChargeHit.ImpactNormal*12.f;
+        const FVector At=ChargeHit.ImpactPoint+ChargeHit.ImpactNormal*(VoyagerItemVisuals::HalfExtent(EVoyagerItem::DemolitionCharge).Z+.5);
         auto* Charge=GetWorld()->SpawnActor<AVoyagerDemolitionCharge>(At,FRotationMatrix::MakeFromZ(ChargeHit.ImpactNormal).Rotator(),Params);
         if(!Charge){Notify(TEXT("Unable to place the charge. Your charge was preserved."));return;}
         Charge->Arm(this);
     }
     PS->Items=MoveTemp(Next);PS->Minerals=Minerals;PS->ForceNetUpdate();
+    Explorer->RefreshHeldSupply();
     if(RawDamage>0.f)UGameplayStatics::ApplyDamage(Explorer,RawDamage,nullptr,Explorer,nullptr);
     if(auto* GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())GM->SaveExpedition();
     Notify(Message);
@@ -188,5 +190,5 @@ void AVoyagerHUD::DrawBackpack(AVoyagerController* PC)
     Rect(Left+30,Top+683,1120,1,Line);
     if(PC->NoticeTime>0&&!PC->Notice.IsEmpty())Text(PC->Notice,Left+30,Top+699,.59f,Amber,1120);
     else Text(TEXT("The world keeps running. Find cover before opening your backpack or using equipment."),Left+30,Top+699,.55f,Muted,1120);
-    Text(TEXT("1-8  SELECT ACTION     I / ESC / BACKSPACE  CLOSE     P  CITY PHONE"),Left+30,Top+731,.56f,Mint,1120);
+    Text(TEXT("1-8  ACTION     I / ESC  CLOSE     Q  EQUIP WHEN CLOSED     P  CITY PHONE"),Left+30,Top+731,.56f,Mint,1120);
 }

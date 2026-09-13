@@ -2,6 +2,8 @@
 #include "VoyagerData.h"
 #include "VoyagerGameMode.h"
 #include "VoyagerDestruction.h"
+#include "VoyagerFurnitureLayout.h"
+#include "VoyagerFurnitureValidation.h"
 #include "RiftVisual.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -10,6 +12,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "Misc/CommandLine.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 
@@ -764,6 +767,8 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
     const FCityFrame Frame = CityFrame(BuiltSystem,Planet,Site);
     const FCityPalette Colors = Palette(Biome);
     const FString Name = FString::Printf(TEXT("SettlementDetail_%d_%d_"),BuiltSystem,Key);
+    const bool bFurnitureAudit=FParse::Param(FCommandLine::Get(),TEXT("VoyagerFurnitureAudit"));
+    int32 FurnitureAssemblies=0,FurnitureParts=0,FurnitureFailures=0;
     auto* Frames = Instances(this,City,true,Name + TEXT("FacadeFrames"),TEXT("Cube"),Frame.Origin,Colors.Base);
     auto* Equipment = Instances(this,City,true,Name + TEXT("Equipment"),TEXT("Cube"),Frame.Origin,Colors.Secondary,false,true);
     auto* Pipes = Instances(this,City,true,Name + TEXT("Pipes"),TEXT("Cylinder"),Frame.Origin,Colors.Base);
@@ -823,20 +828,61 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
             if(LZ-Size.Z*.5<RoomHeight && IntersectsStairClearance(LX,LY,Size))return;
             Add(Mesh,Floor + X * LX + Y * LY + F.Up * LZ,Size,F.Rotation);
         };
-        auto Chair = [&](double LX,double LY,bool bFaceBack)
+        auto PlaceAssembly = [&](const VoyagerFurniture::FAssembly& Assembly)
         {
-            Place(Fabric,LX,LY,48,FVector(64,64,16));
-            Place(Fabric,LX,LY + (bFaceBack ? -27 : 27),83,FVector(64,12,60));
-            for (int32 A : {-1,1}) for (int32 C : {-1,1})
-                Place(Metal,LX + A * 24,LY + C * 24,21,FVector(6,6,42));
+            if (!Assembly.Bounds.IsValid) return;
+            const FVector Center=Assembly.Bounds.GetCenter(),Size=Assembly.Bounds.GetSize();
+            // Keep a chair/desk/display together when the complete rotated set
+            // would narrow the stairwell. Never leave orphan legs or screens.
+            if (IntersectsStairClearance(Center.X,Center.Y,Size)) return;
+            if (bFurnitureAudit)
+            {
+                FString Reason;
+                const bool bCorridorClear=Assembly.Bounds.Min.X>DoorWidth*.5+45 || Assembly.Bounds.Max.X<-DoorWidth*.5-45;
+                if (!VoyagerFurniture::Validate(Assembly,Reason) || !bCorridorClear)
+                {
+                    ++FurnitureFailures;
+                    UE_LOG(LogTemp,Error,TEXT("VOYAGER FURNITURE AUDIT FAIL seed=%d planet=%d site=%d building=%d reason=%s"),
+                        BuiltSystem,Planet,Site,BuildingIndex,bCorridorClear?*Reason:TEXT("CENTRAL_CIRCULATION_BLOCKED"));
+                }
+                ++FurnitureAssemblies;
+            }
+            for (const auto& Part:Assembly.Parts)
+            {
+                UInstancedStaticMeshComponent* Mesh=nullptr;
+                switch (Part.Surface)
+                {
+                case VoyagerFurniture::ESurface::Wood: Mesh=Wood; break;
+                case VoyagerFurniture::ESurface::Metal: Mesh=Metal; break;
+                case VoyagerFurniture::ESurface::Fabric: Mesh=Fabric; break;
+                case VoyagerFurniture::ESurface::Ceramic: Mesh=Ceramic; break;
+                case VoyagerFurniture::ESurface::Screen: Mesh=Screen; break;
+                }
+                const FVector Position=Floor+F.Rotation.RotateVector(Part.Position);
+                const FQuat Rotation=F.Rotation*Part.Rotation;
+                Add(Mesh,Position,Part.Size,Rotation);
+                if (bFurnitureAudit)
+                {
+                    FTransform Actual;
+                    if (!Mesh->GetInstanceTransform(Mesh->GetInstanceCount()-1,Actual,true) ||
+                        !Actual.GetLocation().Equals(Position,.05) || !Actual.GetRotation().Equals(Rotation,.0001) ||
+                        !Actual.GetScale3D().Equals(Part.Size/100.0,.0001))
+                    {
+                        ++FurnitureFailures;
+                        UE_LOG(LogTemp,Error,TEXT("VOYAGER FURNITURE AUDIT FAIL seed=%d planet=%d site=%d building=%d reason=RADIAL_INSTANCE_TRANSFORM"),
+                            BuiltSystem,Planet,Site,BuildingIndex);
+                    }
+                    ++FurnitureParts;
+                }
+            }
         };
-        auto Desk = [&](double LX,double LY,double Width)
+        auto Chair = [&](double LX,double LY,double TableX,double TableY)
         {
-            Place(Wood,LX,LY,86,FVector(Width,115,10));
-            for (int32 Side : {-1,1}) Place(Metal,LX + Side * (Width * .5 - 12),LY,40,FVector(16,92,80));
-            Place(Metal,LX,LY + 20,105,FVector(10,10,40));
-            Place(Screen,LX,LY + 28,130,FVector(82,8,50));
-            Place(Metal,LX,LY - 25,94,FVector(62,26,5));
+            PlaceAssembly(VoyagerFurniture::Chair(FVector(LX,LY,0),FVector(TableX,TableY,0)));
+        };
+        auto Desk = [&](double LX,double LY,double Width,bool bWithChair=true,double LevelZ=0)
+        {
+            PlaceAssembly(VoyagerFurniture::Workstation(FVector(LX,LY,LevelZ),FVector(LX,LY-110,LevelZ),Width,bWithChair));
         };
         auto Bed = [&](double LX,double LY,bool bMedical)
         {
@@ -847,8 +893,9 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
                 Place(Metal,LX + A * 53,LY + C * 100,17,FVector(12,12,34));
             if (bMedical)
             {
-                Place(Metal,LX + 110,LY + 80,85,FVector(8,8,170));
-                Place(Screen,LX + 110,LY + 80,166,FVector(55,10,38));
+                // Diagnostics face staff in the central aisle on either side of
+                // the clinic, rather than glowing through an identical rear face.
+                PlaceAssembly(VoyagerFurniture::DiagnosticDisplay(FVector(LX+110,LY+80,0),FVector(0,LY,0)));
             }
         };
         const double SideX = B.Width * .28, RearY = B.Depth * .28;
@@ -870,14 +917,14 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
                     Place(Round,TableX,TableY,78,FVector(135,135,10));
                     Place(Metal,TableX,TableY,38,FVector(12,12,76));
                     Place(Round,TableX,TableY,7,FVector(60,60,10));
-                    Chair(TableX,TableY - 105,false); Chair(TableX,TableY + 105,true);
-                    Place(Goods,TableX + 25,TableY,90,FVector(12,12,15));
+                    Chair(TableX,TableY - 105,TableX,TableY); Chair(TableX,TableY + 105,TableX,TableY);
+                    Place(Goods,TableX + 25,TableY,90.5,FVector(12,12,15));
                 }
             }
             break;
         case 1: // Clinic: beds, diagnostics and a staffed reception desk.
             for (int32 Side : {-1,1}) for (int32 Row : {-1,1}) Bed(Side * SideX,Row * RearY,true);
-            Desk(-SideX,0,260); Chair(-SideX,-100,false);
+            Desk(-SideX,0,260);
             Place(Ceramic,SideX,0,110,FVector(130,65,220));
             Place(Signs,SideX,-35,130,FVector(18,6,65)); Place(Signs,SideX,-35,130,FVector(65,6,18));
             break;
@@ -894,12 +941,12 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
                 }
                 for (int32 End : {-1,1}) Place(Metal,ShelfX,End * B.Depth * .325,132,FVector(145,12,264));
             }
-            Desk(-SideX,-RearY,300); Chair(-SideX,-RearY - 100,false);
+            Desk(-SideX,-RearY,300);
             break;
         case 3: // Workshop: heavy benches, tools, portable machinery and crates.
             for (int32 Side : {-1,1})
             {
-                Desk(Side * SideX,RearY,380);
+                Desk(Side * SideX,RearY,380,false);
                 Place(Metal,Side * SideX,-RearY,70,FVector(260,160,140));
                 Place(Round,Side * SideX,-RearY,170,FVector(115,115,70));
                 for (int32 Crate = 0; Crate < 3; ++Crate)
@@ -929,7 +976,7 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
         case 5: // Security: dispatch consoles, briefing bench and equipment lockers.
             for (int32 Side : {-1,1})
             {
-                Desk(Side * SideX,0,310); Chair(Side * SideX,-110,false);
+                Desk(Side * SideX,0,310);
                 for (int32 Locker = 0; Locker < 4; ++Locker)
                 {
                     const double LX = Side * SideX + (Locker - 1.5) * 95;
@@ -971,13 +1018,7 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
                 }
                 else
                 {
-                    UpperPlace(Wood,LX,LY,83,FVector(280,110,10));
-                    for(int32 Leg:{-1,1})UpperPlace(Metal,LX+Leg*115,LY,38,FVector(18,90,76));
-                    UpperPlace(Metal,LX,LY+22,116,FVector(8,8,55));
-                    UpperPlace(Screen,LX,LY+22,137,FVector(95,8,58));
-                    UpperPlace(Fabric,LX,LY-120,50,FVector(68,68,18));
-                    UpperPlace(Metal,LX,LY-120,24,FVector(45,45,48));
-                    UpperPlace(Fabric,LX,LY-149,85,FVector(68,10,65));
+                    Desk(LX,LY,280,true,Z);
                 }
             }
             UpperPlace(Wood,-B.Width*.5+110,0,130,FVector(130,380,260));
@@ -997,6 +1038,9 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
             }
         }
     }
+    if (bFurnitureAudit && FurnitureFailures==0)
+        UE_LOG(LogTemp,Display,TEXT("VOYAGER FURNITURE AUDIT PASS seed=%d planet=%d site=%d buildings=%d assemblies=%d parts=%d orientation=1 support=1 circulation=1 radial_instances=1"),
+            BuiltSystem,Planet,Site,Plan.Num(),FurnitureAssemblies,FurnitureParts);
     for (int32 XIndex = 0; XIndex <= 8; ++XIndex)
         for (int32 YIndex = 0; YIndex <= 8; ++YIndex)
         {

@@ -30,7 +30,7 @@ if($Packaged){$arguments=$arguments[1..($arguments.Length-1)]}
 if($Render){$arguments+=@('-windowed','-ResX=1280','-ResY=720','-VoyagerDestructionCapture')}else{$arguments+='-NullRHI'}
 $before=@(Save-Hashes);$after=@();$hostProcess=$null;$peer=$null;$failure=$null;$log='';$peerText=''
 $checks=[ordered]@{};$captures=@();$started=[DateTime]::UtcNow;$clock=[Diagnostics.Stopwatch]::StartNew()
-$errorsPattern='VOYAGER DESTRUCTION AUDIT FAIL\b|Fatal error\b|LowLevelFatalError|Assertion failed\b|Ensure condition failed|Failed to compile Material|VOYAGER CHARACTER MISSING'
+$errorsPattern='VOYAGER DESTRUCTION AUDIT FAIL\b|Fatal error\b|LowLevelFatalError|Assertion failed\b|Ensure condition failed|Failed to compile Material|VOYAGER CHARACTER MISSING|Gamethread hitch waiting for resource cleanup|overwrite took'
 try{
     if(-not(Test-Path -LiteralPath $executable -PathType Leaf)){throw "Missing executable: $executable"}
     $hostProcess=Start-Process -FilePath $executable -ArgumentList $arguments -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
@@ -57,11 +57,19 @@ try{
         'CHAOS_DEBRIS_ACTUALLY_MOVES','STRUCTURAL_THRESHOLD_REMOVES_UPPER_FLOORS','COLLAPSED_UPPER_STOREY_HAS_NO_COLLISION',
         'OTHER_BUILDING_REMAINS_INTACT','SECOND_STRUCTURAL_THRESHOLD','FULL_COLLAPSE_PERSISTS_FOUNDATION','DEBRIS_HARD_LIMIT_96',
         'BUILDING_DAMAGE_WRITTEN_TO_DISK','CLEAN_RESTORE_REBUILDS_INTACT_COLLISION','DISK_RESTORE_REAPPLIES_DAMAGE_AND_COLLISION',
-        'BACKPACK_ACTION_PLACES_AND_CONSUMES_CHARGE','ARMED_CHARGE_OBSERVES_FUSE','TIMED_CHARGE_EXPLODES_AND_DAMAGES_REAL_BUILDING')
+        'BACKPACK_ACTION_PLACES_AND_CONSUMES_CHARGE','ARMED_CHARGE_OBSERVES_FUSE','TIMED_CHARGE_EXPLODES_AND_DAMAGES_REAL_BUILDING',
+        'GLASS_NATIVE_MASS_FRICTION_AND_DAMPING','MATERIAL_AWARE_CHAOS_RESPONSE_AND_MASS',
+        'CHAOS_POOL_REUSES_BODIES_WITHOUT_ACTOR_GROWTH','ONE_FAILED_SUPPORT_RETAINS_STOREYS',
+        'LOCAL_SUPPORT_LOSS_COLLAPSES_ONLY_UPPER_STOREYS','SUPPORT_COLLAPSE_UPDATES_REAL_COLLISION',
+        'SUPPORT_DELTAS_SAVED_TO_DISK','MALFORMED_SUPPORT_DELTA_REJECTED','LEGACY_INTEGRITY_AND_GLASS_SAVE_PRESERVED',
+        'SUPPORT_DISK_RESTORE_RETAINS_COLLAPSE_AND_GLASS','GROUND_SUPPORT_LOSS_COLLAPSES_WITH_POSITIVE_INTEGRITY',
+        'POSITIVE_INTEGRITY_RUINS_REFUSE_CITY_SERVICES','BLAST_ABOVE_RUIN_DAMAGES_REMAINING_SUPPORT')
     foreach($name in $required){$checks[$name]=$log -match ("VOYAGER DESTRUCTION AUDIT PASS $name\b")}
     $checks['COMPLETE']=$log -match 'VOYAGER DESTRUCTION AUDIT COMPLETE PASS';$checks['NO_ENGINE_ERRORS']=$log -notmatch $errorsPattern
     if($Network){
-        foreach($name in @('REMOTE_INTACT_BUILDING','REMOTE_BROKEN_GLASS','REMOTE_PARTIAL_COLLAPSE','REMOTE_FULL_COLLAPSE','REMOTE_DESTRUCTION_AUTHORITY_GUARD','REMOTE_DEBRIS_PRESENT')){
+        foreach($name in @('REMOTE_INTACT_BUILDING','REMOTE_BROKEN_GLASS','REMOTE_PARTIAL_COLLAPSE','REMOTE_FULL_COLLAPSE','REMOTE_DESTRUCTION_AUTHORITY_GUARD','REMOTE_DEBRIS_PRESENT','REMOTE_DEBRIS_IS_PRESENTATION_ONLY',
+            'REMOTE_RECYCLED_FRAGMENTS_SNAP_TO_REPLICATED_POSES','REMOTE_SUPPORT_DELTAS_AND_PARTIAL_COLLAPSE',
+            'REMOTE_SUPPORT_LOSS_REMOVES_GROUND_STOREY','REMOTE_LOCAL_SUPPORT_AUTHORITY_GUARD')){
             $checks[$name]=$peerText -match ("VOYAGER DESTRUCTION AUDIT PASS $name\b")
         }
         $checks['PEER_COMPLETE']=$peerText -match 'VOYAGER DESTRUCTION AUDIT CLIENT COMPLETE PASS';$checks['PEER_NO_ENGINE_ERRORS']=$peerText -notmatch $errorsPattern
@@ -87,7 +95,7 @@ try{
     $report=[ordered]@{status=$(if($failure){'failed'}else{'passed'});variant=$variant;elapsed_seconds=[Math]::Round($clock.Elapsed.TotalSeconds,3);
         failure=$failure;checks=$checks;log=$logPath;peer_log=$peerLog;normal_saves_before=$before;normal_saves_after=$after;screenshots=$captures;
         evidence=@([regex]::Matches($log,'VOYAGER DESTRUCTION AUDIT PASS[^\r\n]*')|ForEach-Object{$_.Value});
-        coverage='Real window/wall traces through instanced building geometry, DamageHit, visible section removal, removed collision, native Chaos body simulation and movement, three structural thresholds, unchanged neighboring building, 96-fragment bound, disk save and restoration of both intact and collapsed collision. Optional peer observes replicated damage and rejects client mutation. Screenshots require visual inspection.'}
+        coverage='Real instanced wall/window traces, aggregate and regional support collapse, changed collision, native glass/concrete mass and contact settings, moving Chaos bodies, recycling within 96 actors, intact/legacy/malformed/support disk saves, charge placement/fuse/explosion and service refusal at positive-integrity ruins. Network mode also observes actual replicated support deltas, partial/ground-storey removal, authority rejection and recycled fragment poses on the first client frame receiving a new serial; it never invokes OnRep manually. Resource-cleanup overwrite warnings fail the run. Screenshots require visual inspection.'}
     $json=$report|ConvertTo-Json -Depth 8;[IO.File]::WriteAllText((Join-Path $directory 'Report.json'),$json)
     [IO.File]::WriteAllText((Join-Path $projectRoot ('Saved\VoyagerDestruction'+$variant+'Report.json')),$json)
 }

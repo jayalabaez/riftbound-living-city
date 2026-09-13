@@ -8,6 +8,7 @@ class UCameraComponent;
 class UAudioComponent;
 class AVoyagerCitizen;
 class AVoyagerAnimal;
+class UProceduralMeshComponent;
 UCLASS()
 class RIFTBOUND_API AVoyagerCharacter : public ACharacter
 {
@@ -24,6 +25,11 @@ public:
     UPROPERTY(Replicated) bool bWeaponMode=false;
     void ToggleWeapon();
     UFUNCTION(Server,Reliable) void ServerToggleWeapon();
+    UPROPERTY(ReplicatedUsing=OnRep_HeldSupply) int32 HeldSupply=-1;
+    UFUNCTION(Server,Reliable) void ServerCycleSupply();
+    UFUNCTION(Server,Reliable) void ServerUseHeldSupply(int32 ExpectedItem);
+    UFUNCTION() void OnRep_HeldSupply();
+    void RefreshHeldSupply();
     UPROPERTY(VisibleAnywhere) TObjectPtr<UCameraComponent> Camera;
     UPROPERTY(Replicated) float Health=100;
     float ScanPulse=0;
@@ -41,12 +47,15 @@ public:
     UFUNCTION(NetMulticast,Unreliable) void MiningBeam(FVector End,bool Success);
 private:
     UPROPERTY() TObjectPtr<USceneComponent> Tool;
+    UPROPERTY() TObjectPtr<UProceduralMeshComponent> SupplyVisual;
+    void CycleSupply();
     TWeakObjectPtr<AVoyagerCitizen> TalkPartner;
     bool bMining=false;
     bool bSprinting=false;
     bool bBodycam=true;
     float CameraStride=0.f;
     float NextShot=0,LastServerShot=-10,LastScan=-10,LastTalk=-10;
+    float LastEquipmentChange=-1.f;
     void Forward(float Value);
     void Right(float Value);
     void Turn(float Value);
