@@ -91,8 +91,12 @@ def main():
             shape = node(unreal.MaterialExpressionMultiply);link(layer,shape,'A');link(coverage,shape,'B')
             detail = coherent_noise(coords,'.25+.75*N.Value(P*7.0)')
             eroded = node(unreal.MaterialExpressionMultiply);link(shape,eroded,'A');link(detail,eroded,'B')
-            density = node(unreal.MaterialExpressionMultiply,const_b=.000004);link(eroded,density,'A')
-            output(density,unreal.MaterialProperty.MP_OPACITY)
+            # Volume materials route Extinction through Subsurface Color.
+            # Opacity is ignored by the cloud marcher; its unconnected default
+            # extinction would turn the entire layer into an opaque white shell.
+            # VolumetricCloud.usf integrates these coefficients in meters.
+            density = node(unreal.MaterialExpressionMultiply,const_b=.002);link(eroded,density,'A')
+            output(density,unreal.MaterialProperty.MP_SUBSURFACE_COLOR)
             node(unreal.MaterialExpressionVolumetricAdvancedMaterialOutput,const_phase_g=.65,const_phase_g2=-.2,const_phase_blend=.2,multi_scattering_approximation_octave_count=1,gray_scale_material=True,ray_march_volume_shadow=True)
         else:
             output(coverage,unreal.MaterialProperty.MP_OPACITY_MASK)

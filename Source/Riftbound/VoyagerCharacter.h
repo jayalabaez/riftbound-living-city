@@ -94,6 +94,7 @@ private:
     TWeakObjectPtr<APawn> TestFlightPawn;
     int32 TestFlightEpoch=0,TestWorldRevision=0,TestCaptures=0;
     double TestMaxFlightStep=0;
+    double TestLastSimSeconds=0;
     double PerformanceWindowStart=0,PreviousFrameTime=0,WorstFrameMs=0;
     uint32 PerformanceFrames=0;
     float PreviousProbeDelta=0;

@@ -80,6 +80,8 @@ public:
     void StartCruise(int32 Planet);
     void CancelCruise();
     int32 GetFlightEpoch() const { return FlightEpoch; }
+    // Cumulative accepted simulation time; authority does not replay moves.
+    double GetSimulatedFlightSeconds() const { return SimulatedFlightSeconds; }
     void SetFlightTestInput(float Throttle,float Lift,bool bBoost);
     void ClearFlightTestInput();
     UFUNCTION(Server,Unreliable) void ServerFlightInputs(const TArray<FVoyagerFlightMove>& Moves);
@@ -109,6 +111,7 @@ private:
     float EffectsRemaining=0,Age=0,VisualBank=0;
     float SimulationAccumulator=0,PendingYaw=0,PendingPitch=0,NetDiagnosticTime=0;
     double LastInputPacketTime=0;
+    double SimulatedFlightSeconds=0;
     float SimulationCredit=.2f;
     uint32 LocalSequence=0,LastProcessedSequence=0;
     int32 FlightEpoch=0;

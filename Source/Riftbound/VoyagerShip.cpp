@@ -345,6 +345,7 @@ void AVoyagerShip::SimulateMove(const FVoyagerFlightMove& Move,bool bPermitTrave
     const auto State=GetWorld()->GetGameState<AVoyagerState>();
     if(!State||State->bTransitioning||Move.bPaused||Hull<=0){FlightVelocity=FVector::ZeroVector;return;}
     const float D=FMath::Clamp(Move.Seconds,.000001f,.06f);
+    SimulatedFlightSeconds+=double(D);
     const bool bManual=FMath::Abs(Move.Throttle)>.1f||FMath::Abs(Move.Strafe)>.1f||FMath::Abs(Move.Lift)>.1f||FMath::Abs(Move.Yaw)>.015f||FMath::Abs(Move.Pitch)>.015f;
     // Old lift/throttle packets can arrive just after the reliable cruise request.
     // Only inputs sampled after observing cruise may cancel it.

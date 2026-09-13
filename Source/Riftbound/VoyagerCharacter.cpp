@@ -304,8 +304,8 @@ void AVoyagerController::Tick(float D)
 void AVoyagerController::RunProbe(float D)
 {
     if(!IsLocalController())return;TestTime+=D;
-    // Controller sampling precedes the pawn tick. A captured frame can be much
-    // longer than the next frame, so bound travel using both adjacent deltas.
+    // Remote samples include replication corrections, so retain their adjacent
+    // frame allowance. Authority samples use the ship's accepted simulation time.
     const double MovementSampleDelta=FMath::Max(double(D),double(PreviousProbeDelta));PreviousProbeDelta=D;
     const double FrameTime=FPlatformTime::Seconds();
     if(PerformanceWindowStart==0)PerformanceWindowStart=FrameTime;
@@ -346,13 +346,17 @@ void AVoyagerController::RunProbe(float D)
     {
         if(State->bTransitioning||State->Revision!=TestWorldRevision||TestFlightPawn.Get()!=Ship)
         {Fail(TEXT("PLANET_TRAVEL_REBUILT_OR_REPLACED_PAWN"));return;}
-        const double Step=FVector::Dist(TestLastLocation,Ship->GetActorLocation());
-        const double NetworkAllowance=HasAuthority()?0.0:.10;
-        const double Limit=(TestStage==6?50000000.0:3000000.0)*(FMath::Max(MovementSampleDelta,1.0/120.0)+NetworkAllowance)+2000.0;
-        if(Step>Limit){UE_LOG(LogTemp,Error,TEXT("VOYAGER CONTINUITY step=%.3f limit=%.3f dt=%.6f"),Step,Limit,D);Fail(TEXT("POSITION_DISCONTINUITY"));return;}
-        TestMaxFlightStep=FMath::Max(TestMaxFlightStep,Step);TestLastLocation=Ship->GetActorLocation();
         if((TestStage==4||TestStage==7)&&Ship->GetFlightEpoch()!=TestFlightEpoch)
         {Fail(TEXT("ATMOSPHERE_RESET_FLIGHT"));return;}
+        const double Step=FVector::Dist(TestLastLocation,Ship->GetActorLocation());
+        const double SimSeconds=Ship->GetSimulatedFlightSeconds();
+        const double SimDelta=SimSeconds-TestLastSimSeconds;
+        if(!FMath::IsFinite(SimDelta)||SimDelta<0.0){Fail(TEXT("FLIGHT_SIMULATION_CLOCK"));return;}
+        const double NetworkAllowance=HasAuthority()?0.0:.10;
+        const double SampleDelta=HasAuthority()?SimDelta:FMath::Max(MovementSampleDelta,1.0/120.0);
+        const double Limit=(TestStage==6?50000000.0:3000000.0)*(SampleDelta+NetworkAllowance)+2000.0;
+        if(Step>Limit){UE_LOG(LogTemp,Error,TEXT("VOYAGER CONTINUITY step=%.3f limit=%.3f simdt=%.6f framedt=%.6f"),Step,Limit,SimDelta,D);Fail(TEXT("POSITION_DISCONTINUITY"));return;}
+        TestMaxFlightStep=FMath::Max(TestMaxFlightStep,Step);TestLastLocation=Ship->GetActorLocation();TestLastSimSeconds=SimSeconds;
     }
     if(TestStage==0&&TestTime>3&&Explorer){TestStart=Explorer->GetActorLocation();Explorer->ServerScan();Capture(1);Advance();}
     else if(TestStage==1&&Explorer)
@@ -374,7 +378,7 @@ void AVoyagerController::RunProbe(float D)
     else if(TestStage==3&&Ship&&Ship->GetFlightEpoch()>0)
     {
         Pass(TEXT("BOARD"));TestFlightPawn=Ship;TestFlightEpoch=Ship->GetFlightEpoch();TestWorldRevision=State->Revision;
-        TestLastLocation=Ship->GetActorLocation();Ship->SetFlightTestInput(0,1,true);Advance();
+        TestLastLocation=Ship->GetActorLocation();TestLastSimSeconds=Ship->GetSimulatedFlightSeconds();Ship->SetFlightTestInput(0,1,true);Advance();
     }
     else if(TestStage==4&&Ship)
     {
@@ -394,7 +398,7 @@ void AVoyagerController::RunProbe(float D)
         {
             if(PS->PirateKills>0)Pass(TEXT("SPACE_COMBAT"));
             else UE_LOG(LogTemp,Display,TEXT("VOYAGER TEST INFO space combat targets active; exploration continues"));
-            Ship->ServerSelectTarget();Ship->ServerWarp();TestLastLocation=Ship->GetActorLocation();Advance();
+            Ship->ServerSelectTarget();Ship->ServerWarp();TestLastLocation=Ship->GetActorLocation();TestLastSimSeconds=Ship->GetSimulatedFlightSeconds();Advance();
         }
     }
     else if(TestStage==6&&Ship&&PhysicalPlanet==1&&!Ship->bCruising&&Altitude>Voyager::AtmosphereHeight)

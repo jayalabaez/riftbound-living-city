@@ -518,9 +518,7 @@ void AVoyagerWorld::BuildLighting()
     Sun->DynamicShadowCascades = 4;
     Sun->bUseRayTracedDistanceFieldShadows = false;
     Sun->bPerPixelAtmosphereTransmittance = true;
-    // The cloud shadow map loses useful coverage on these translated small
-    // planets. Keep local terrain/foliage shadows and atmospheric extinction.
-    Sun->bCastCloudShadows = false;
+    Sun->bCastCloudShadows = true;
     Sun->CloudShadowExtent = 35.f;
     Sun->CloudShadowStrength = .42f;
     Sun->LightSourceAngle = .5357f;
