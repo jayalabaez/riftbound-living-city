@@ -866,3 +866,22 @@ use three authored LODs and existing project PBR material parents. Their source 
 reproducible import script and provenance ship with the public project. No marketplace
 purchase is needed; this is an art and pursuit upgrade, not civilian traffic or a playable
 car interior. Validation lives in `docs/phases/VOYAGER_SECURITY.md`.
+
+## D-033 — Production audit, safe landing and measured graphics tiers — 2026-09-13
+
+The owner's master production brief prioritizes a coherent, measured reference planet
+over more disconnected features. `docs/VOYAGER_WORLD_AUDIT.md` is the baseline inventory;
+`docs/phases/VOYAGER_PRODUCTION.md` tracks the first foundation slice and its limitations.
+The independent Living City mode and existing Voyager architecture remain intact.
+
+Landing suitability is a pure quantized observation rule in `LivingCitySim`. The host
+samples spherical terrain and queries obstacles; the rule never reads Chaos or owns a
+physics object. Persistent city state remains independent of rendering/physics. Landing
+checks nine supports and the full airframe. Exit checks are bounded to eight floor-backed
+capsule routes, with no forced spawn. JSON provides reviewed safety thresholds.
+
+Modular builds alone define shared-library imports/exports. Graphics tiers use Unreal's
+existing scalability and local user settings rather than another manager. They control
+render cost without changing collision or authoritative population. The benchmark records
+what the RHI actually measures; unavailable GPU information is not reported as zero cost.
+Visual review and controlled-flight tests remain distinct from static scene timings.

@@ -3,7 +3,8 @@ param(
     [string]$Address = '127.0.0.1',
     [ValidateSet('Voyager','Survival')][string]$Game = 'Voyager',
     [switch]$CityVisit,
-    [switch]$NatureVisit
+    [switch]$NatureVisit,
+    [ValidateSet('Saved','Low','Medium','High')][string]$Quality='Saved'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -26,10 +27,12 @@ if ($Mode -eq 'Join') {
 $launchArgs = @(('"' + $project + '"'), $destination, '-game', '-windowed', '-ResX=1600', '-ResY=900', '-NoSplash', '-NoScreenMessages')
 if ($useStandalone) {
     $launchArgs = @($destination, '-windowed', '-ResX=1600', '-ResY=900', '-NoSplash', '-NoScreenMessages')
+    if($Quality -ne 'Saved'){$launchArgs += '-VoyagerQuality='+(@('Low','Medium','High').IndexOf($Quality))}
     if ($CityVisit -and $Game -eq 'Voyager' -and $Mode -ne 'Join') { $launchArgs += '-VoyagerCityVisit' }
     if ($NatureVisit -and $Game -eq 'Voyager' -and $Mode -ne 'Join') { $launchArgs += '-VoyagerNatureVisit' }
     Start-Process -FilePath $standalone -ArgumentList $launchArgs -WorkingDirectory (Split-Path -Parent $standalone) -WindowStyle Normal
 } else {
+    if($Quality -ne 'Saved'){$launchArgs += '-VoyagerQuality='+(@('Low','Medium','High').IndexOf($Quality))}
     if ($CityVisit -and $Game -eq 'Voyager' -and $Mode -ne 'Join') { $launchArgs += '-VoyagerCityVisit' }
     if ($NatureVisit -and $Game -eq 'Voyager' -and $Mode -ne 'Join') { $launchArgs += '-VoyagerNatureVisit' }
     Start-Process -FilePath $editor -ArgumentList $launchArgs -WorkingDirectory $projectRoot -WindowStyle Normal

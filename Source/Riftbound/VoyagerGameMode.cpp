@@ -1,5 +1,6 @@
 #include "VoyagerGameMode.h"
 #include "VoyagerLaw.h"
+#include "VoyagerLanding.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "VoyagerCharacter.h"
 #include "VoyagerShip.h"
@@ -21,7 +22,7 @@ namespace
 {
     bool IsVoyagerTest()
     {
-        static const TCHAR* Flags[]={TEXT("VoyagerPoliceAudit"),TEXT("VoyagerHuntAudit"),TEXT("VoyagerCosmosAudit"),TEXT("VoyagerDestructionAudit"),TEXT("VoyagerSurvivalAudit"),
+        static const TCHAR* Flags[]={TEXT("VoyagerSafetyAudit"),TEXT("VoyagerBenchmark"),TEXT("VoyagerPoliceAudit"),TEXT("VoyagerHuntAudit"),TEXT("VoyagerCosmosAudit"),TEXT("VoyagerDestructionAudit"),TEXT("VoyagerSurvivalAudit"),
             TEXT("VoyagerCityLifeAudit"),TEXT("VoyagerCrimeAudit"),TEXT("VoyagerBuildingAudit"),TEXT("VoyagerRealismAudit"),TEXT("VoyagerAITest"),TEXT("LivingCityIsolationAudit"),
             TEXT("VoyagerCityNetAudit"),TEXT("VoyagerCityAudit"),TEXT("VoyagerLifeAudit"),TEXT("VoyagerTest"),TEXT("VoyagerNetTest"),TEXT("VoyagerSurfaceAudit")};
         for(const TCHAR* Flag:Flags)if(FParse::Param(FCommandLine::Get(),Flag))return true;
@@ -35,6 +36,8 @@ namespace
     }
     FString SaveSlot()
     {
+        if(FParse::Param(FCommandLine::Get(),TEXT("VoyagerSafetyAudit")))return TEXT("Voyager-Automation-Safety");
+        if(FParse::Param(FCommandLine::Get(),TEXT("VoyagerBenchmark")))return TEXT("Voyager-Automation-Benchmark");
         static const TCHAR* NewAudits[]={TEXT("Police"),TEXT("Hunt"),TEXT("Cosmos"),TEXT("Destruction"),TEXT("Survival"),TEXT("CityLife"),TEXT("Surface")};
         for(const TCHAR* Audit:NewAudits)if(FParse::Param(FCommandLine::Get(),*FString::Printf(TEXT("Voyager%sAudit"),Audit)))return FString::Printf(TEXT("Voyager-Automation-%s"),Audit);
         if(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest")))return TEXT("Voyager-Automation-Network");
@@ -93,6 +96,9 @@ void AVoyagerGameMode::BeginPlay()
 {
     Super::BeginPlay();auto State=GetGameState<AVoyagerState>();
     GetWorld()->GetWorldSettings()->bEnableWorldBoundsChecks=false;
+    if(State&&IsVoyagerTest()){
+        int32 AuditSeed=1;if(FParse::Value(FCommandLine::Get(),TEXT("VoyagerAuditSeed="),AuditSeed))State->SystemSeed=FMath::Max(1,AuditSeed);
+    }
     if(LoadedSave&&State){State->SystemSeed=FMath::Max(1,LoadedSave->SystemSeed);State->PlanetIndex=FMath::Clamp(LoadedSave->PlanetIndex,0,4);CapturedBuildingDamage=LoadedSave->BuildingDamage;}
     if(State)State->PlanetIndex=ValidSavedCustody(LoadedSave)?LoadedSave->JailPlanet:ArrivalPlanet(State->SystemSeed,State->PlanetIndex);
     WorldBuilder=GetWorld()->SpawnActor<AVoyagerWorld>(FVector::ZeroVector,FRotator::ZeroRotator);
@@ -118,7 +124,8 @@ void AVoyagerGameMode::PreLogin(const FString& Options,const FString& Address,co
 }
 AActor* AVoyagerGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
-    const int32 System=LoadedSave?FMath::Max(1,LoadedSave->SystemSeed):1;
+    int32 System=LoadedSave?FMath::Max(1,LoadedSave->SystemSeed):1;
+    if(IsVoyagerTest()){int32 AuditSeed=1;if(FParse::Value(FCommandLine::Get(),TEXT("VoyagerAuditSeed="),AuditSeed))System=FMath::Max(1,AuditSeed);}
     const int32 Planet=ValidSavedCustody(LoadedSave)?LoadedSave->JailPlanet:ArrivalPlanet(System,LoadedSave?FMath::Clamp(LoadedSave->PlanetIndex,0,4):0);
     if(Starts.IsEmpty())for(int32 I=0;I<4;++I)
     {
@@ -202,13 +209,15 @@ void AVoyagerGameMode::BoardShip(AVoyagerCharacter* Explorer)
 void AVoyagerGameMode::LeaveShip(AVoyagerShip* Ship)
 {
     if(!Ship||!Ship->GetController())return;auto State=GetGameState<AVoyagerState>();if(!State||State->bTransitioning)return;
-    if(!Ship->bLanded)return;auto Pilot=Ship->GetController();if(InCustody(Pilot))return;FVector Position=Ship->GetActorLocation()-Ship->GetActorRightVector()*520;
+    if(!Ship->bLanded)return;auto Pilot=Ship->GetController();if(InCustody(Pilot))return;FVector Position;
+    if(!VoyagerLanding::FindExit(Ship,Ship->GetActorLocation(),Ship->GetActorRotation(),Position))
+    {Tell(Pilot,TEXT("Exit blocked. Move the ship to a clear landing area."));return;}
     const int32 Planet=Voyager::NearestPlanet(State->SystemSeed,Position);
     const FVector Up=Voyager::SurfaceNormal(State->SystemSeed,Planet,Position);
-    Position=Voyager::SurfacePoint(State->SystemSeed,Planet,Up,110);
-    FActorSpawnParameters Params;Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+    FActorSpawnParameters Params;Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::DontSpawnIfColliding;
     auto Explorer=GetWorld()->SpawnActor<AVoyagerCharacter>(Position,Voyager::TangentRotation(Up,Ship->GetActorForwardVector()),Params);
     if(Explorer){Pilot->Possess(Explorer);Tell(Pilot,TEXT("F scan the planet  /  left click mine crystals  /  E return to your ship."));UE_LOG(LogTemp,Display,TEXT("VOYAGER DISEMBARKED"));}
+    else Tell(Pilot,TEXT("Exit clearance changed. Wait or choose another landing area."));
 }
 void AVoyagerGameMode::BeginTravel(int32 Mode,int32 System,int32 Planet,const FString& Label,float Duration,bool WarpOnly)
 {

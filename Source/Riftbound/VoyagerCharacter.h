@@ -76,6 +76,10 @@ public:
     UFUNCTION(Server,Reliable) void ServerReload();
     UFUNCTION(Server,Reliable) void ServerSurrender();
     void ToggleMenu();
+    void CycleGraphics();
+    void ApplyGraphics(int32 Level,bool bSave);
+    FString GraphicsLabel() const;
+    int32 GraphicsLevel=2;
     bool bMenuVisible=false;
     bool bCityPhoneVisible=false;
     bool bBackpackVisible=false;
@@ -121,6 +125,7 @@ private:
     float LastSurvivalAction=-10.f;
     float TestTime=0;
     float StageStarted=0;
+    float LandingSettledAt=0;
     int32 TestStage=0;
     float LastProbe=0;
     FVector TestStart=FVector::ZeroVector;

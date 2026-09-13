@@ -14,6 +14,10 @@ The settlement marker leads to a city about **320 metres** from the landing site
 
 ## On foot
 
+Open **Escape → Graphics** to cycle Low, Medium and High. The selection is saved locally;
+all three use full display resolution. Texture budgets are 1, 2 and 4 GB, limited by VRAM.
+These settings change rendering quality, not simulation populations or collision.
+
 - **WASD** walk; **mouse** look; **Shift** sprint; **Space** jump.
 - **F** scan and record this planet. A first discovery earns 30 minerals.
 - **Left mouse** mines a targeted crystal within 18 metres. **V** switches to the pulse sidearm; left mouse then fires out to 1,200 metres. Both tools can hurt residents, so aim carefully.
@@ -33,7 +37,10 @@ The settlement marker leads to a city about **320 metres** from the landing site
 - **W** increases forward speed. **S** brakes to a stop. **A/D** strafe. **Mouse** steers.
 - **Shift** boosts forward flight and ascent/descent. **Left mouse** fires twin lasers.
 - Keep climbing to fly through the **60 km** atmosphere into space. The planet stays beneath you throughout the flight; crossing the atmosphere never teleports the ship.
-- On a planet, descend below 10 metres and press **E** to park and disembark.
+- On a planet, descend below 10 metres, release thrust and brake to 5 m/s or slower,
+  then press **E** over a level clearing. The full wing area and exit route must be clear.
+  If terrain collision is still streaming, wait briefly and try again. You stay aboard
+  when no safe exit exists; a blocked left side can use another clear side.
 
 The HUD identifies the physically nearest planet and measures altitude above its local terrain. It shows metres near the ground, kilometres higher up, actual speed in m/s or km/s, atmospheric density, and a reentry indicator while descending quickly. Selecting a different navigation target does not change these local flight readings.
 
@@ -111,7 +118,9 @@ The host runs one shared star system. Players have separate ships and cargo and 
 
 ## Build and test
 
-Version **0.9.1** validation is tracked in [VOYAGER_SECURITY.md](docs/phases/VOYAGER_SECURITY.md). Earlier results below are historical.
+Version **0.9.2** validation is tracked in [VOYAGER_PRODUCTION.md](docs/phases/VOYAGER_PRODUCTION.md).
+The [world audit](docs/VOYAGER_WORLD_AUDIT.md) distinguishes existing systems from remaining
+production work. Earlier results below are historical.
 
 - `Scripts/Test-VoyagerPolice.ps1`: warnings, attributed officer/drone damage, cover, dispatch, drone death and replication, innocent peer independence, legacy sentence removal and medical recovery. Supports `-Network`, `-Render` and `-Packaged`.
 - `Scripts/Test-VoyagerHunt.ps1`: animal damage/death, harvest validation and inventory. Supports `-Network`, `-Render` and `-Packaged`.

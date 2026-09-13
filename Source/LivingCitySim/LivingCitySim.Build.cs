@@ -46,8 +46,11 @@ public class LivingCitySim : ModuleRules
         //
         // Neither is defined by Scripts/Build-Sim.ps1, so LC_API vanishes in the standalone
         // build. See Sim/include/livingcity/core/Core.h and DECISIONS.md D-015.
-        PublicDefinitions.Add("LC_SHARED_BUILD=1");
-        PrivateDefinitions.Add("LC_EXPORTS=1");
+        if (Target.LinkType != TargetLinkType.Monolithic)
+        {
+            PublicDefinitions.Add("LC_SHARED_BUILD=1");
+            PrivateDefinitions.Add("LC_EXPORTS=1");
+        }
 
         // C4251: "class X needs to have dll-interface to be used by clients of class Y",
         // raised for every std::vector/std::string member of an exported class. It is

@@ -35,6 +35,8 @@
 #include "Widgets/Input/SEditableTextBox.h"
 #include "GameFramework/WorldSettings.h"
 #include "HAL/PlatformMemory.h"
+#include "GameFramework/GameUserSettings.h"
+#include "Misc/ConfigCacheIni.h"
 
 class SVoyagerMenu : public SCompoundWidget
 {
@@ -257,7 +259,24 @@ void AVoyagerCharacter::MiningBeam_Implementation(FVector End,bool Success)
     if(auto Sound=LoadObject<USoundBase>(nullptr,TEXT("/Game/Audio/S_Gun.S_Gun")))UGameplayStatics::PlaySoundAtLocation(this,Sound,Start,.12f,1.8f);
 }
 
-void AVoyagerController::BeginPlay(){Super::BeginPlay();GetWorld()->GetWorldSettings()->bEnableWorldBoundsChecks=false;if(IsLocalController()){SetInputMode(FInputModeGameOnly());bShowMouseCursor=false;}}
+void AVoyagerController::BeginPlay(){Super::BeginPlay();GetWorld()->GetWorldSettings()->bEnableWorldBoundsChecks=false;if(IsLocalController()){
+    SetInputMode(FInputModeGameOnly());bShowMouseCursor=false;
+    GConfig->GetInt(TEXT("Voyager.Graphics"),TEXT("Quality"),GraphicsLevel,GGameUserSettingsIni);
+    FParse::Value(FCommandLine::Get(),TEXT("VoyagerQuality="),GraphicsLevel);
+    ApplyGraphics(GraphicsLevel,false);
+}}
+void AVoyagerController::ApplyGraphics(int32 Level,bool bSave)
+{
+    if(!IsLocalController()||!GEngine)return;
+    GraphicsLevel=FMath::Clamp(Level,0,2);
+    if(auto Settings=GEngine->GetGameUserSettings()){
+        Settings->SetOverallScalabilityLevel(GraphicsLevel);Settings->SetResolutionScaleValueEx(100.f);Settings->ApplyNonResolutionSettings();
+    }
+    if(bSave){GConfig->SetInt(TEXT("Voyager.Graphics"),TEXT("Quality"),GraphicsLevel,GGameUserSettingsIni);GConfig->Flush(false,GGameUserSettingsIni);}
+}
+FString AVoyagerController::GraphicsLabel() const
+{static const TCHAR* Names[]={TEXT("LOW"),TEXT("MEDIUM"),TEXT("HIGH")};return FString::Printf(TEXT("GRAPHICS: %s  /  CLICK TO CHANGE"),Names[FMath::Clamp(GraphicsLevel,0,2)]);}
+void AVoyagerController::CycleGraphics(){ApplyGraphics((GraphicsLevel+1)%3,true);}
 void AVoyagerController::UpdateRotation(float D)
 {
     auto Explorer=Cast<AVoyagerCharacter>(GetPawn());auto State=GetWorld()->GetGameState<AVoyagerState>();
@@ -342,6 +361,7 @@ void AVoyagerController::ShowMenu()
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(13).OnClicked_Lambda([this](){HideMenu();return FReply::Handled();})[Label(TEXT("CONTINUE EXPEDITION"),17)]]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){ServerSave();HideMenu();return FReply::Handled();})[Label(TEXT("SAVE EXPEDITION   /   F5"),14)]]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){ServerUpgrade();HideMenu();return FReply::Handled();})[Label(TEXT("UPGRADE LASERS   /   75 MINERALS   /   U"),14)]]
+      +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){CycleGraphics();return FReply::Handled();})[SNew(STextBlock).Text_Lambda([this](){return FText::FromString(GraphicsLabel());}).Font(FCoreStyle::GetDefaultFontStyle("Regular",14))]]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){ServerSave();HideMenu();UGameplayStatics::OpenLevel(this,TEXT("/Game/Maps/Forest"),true,TEXT("game=/Script/Riftbound.VoyagerGameMode?listen"));return FReply::Handled();})[Label(TEXT("HOST CO-OP EXPEDITION"),14)]]
       +SVerticalBox::Slot().AutoHeight().Padding(0,14,0,4)[Label(TEXT("Join a host IP  /  shared star system  /  up to 4 players"),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SAssignNew(AddressBox,SEditableTextBox).Text(FText::FromString(TEXT("127.0.0.1"))).Font(FCoreStyle::GetDefaultFontStyle("Regular",16))]
@@ -490,7 +510,12 @@ void AVoyagerController::RunProbe(float D)
         if(Altitude<Voyager::AtmosphereHeight&&Altitude>1000000)Capture(8);
         if(Altitude<500)
         {
-            Ship->ClearFlightTestInput();Pass(TEXT("SEAMLESS_DESCENT"));Pass(TEXT("PLANET_LANDING"));
+            Ship->ClearFlightTestInput();
+            // Release descent and let the real flight state settle before requesting gear.
+            if(Ship->GetVelocity().Size()>100){LandingSettledAt=0;return;}
+            if(LandingSettledAt==0)LandingSettledAt=TestTime;
+            if(TestTime-LandingSettledAt<.75f)return;
+            Pass(TEXT("SEAMLESS_DESCENT"));Pass(TEXT("PLANET_LANDING"));
             UE_LOG(LogTemp,Display,TEXT("VOYAGER CONTINUITY PASS max_step_cm=%.3f revision=%d"),TestMaxFlightStep,State->Revision);
             Ship->ServerInteract();Advance();
         }

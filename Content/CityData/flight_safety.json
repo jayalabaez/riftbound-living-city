@@ -1,0 +1,6 @@
+{
+  "maximum_landing_altitude_cm": 1000,
+  "maximum_landing_speed_cm_per_second": 500,
+  "maximum_support_relief_cm": 90,
+  "minimum_surface_up_dot_milli": 978
+}

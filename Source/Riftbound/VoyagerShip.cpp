@@ -1,5 +1,6 @@
 #include "VoyagerShip.h"
 #include "VoyagerLaw.h"
+#include "VoyagerLanding.h"
 #include "VoyagerCosmos.h"
 #include "VoyagerDestruction.h"
 #include "VoyagerCharacter.h"
@@ -571,15 +572,15 @@ void AVoyagerShip::ServerInteract_Implementation()
 {
     if(!CanAct())return;
     auto State=GetWorld()->GetGameState<AVoyagerState>();auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>();if(!State||!GM)return;
-    if(bLanded||SurfaceAltitude()<1000.0)
+    if(bLanded){GM->LeaveShip(this);return;}
     {
-        const int32 Planet=NearestPlanetIndex();const FVector Up=Voyager::SurfaceNormal(State->SystemSeed,Planet,GetActorLocation());
-        const FVector Position=Voyager::SurfacePoint(State->SystemSeed,Planet,Up,160.0);
-        CancelCruise();bLanded=true;Speed=0;FlightVelocity=FVector::ZeroVector;
-        SetActorLocationAndRotation(Position,Voyager::TangentRotation(Up,GetActorForwardVector()),false);
-        PublishFlightState();ForceNetUpdate();GM->LeaveShip(this);
+        FVector Position,Exit;FRotator Facing;FString Reason;
+        if(!VoyagerLanding::FindLanding(this,Position,Facing,Reason))
+        {UE_LOG(LogTemp,Display,TEXT("VOYAGER LANDING REFUSED speed_cm_s=%.2f altitude_cm=%.2f reason=%s"),GetVelocity().Size(),SurfaceAltitude(),*Reason);if(auto PC=Cast<AVoyagerController>(GetController()))PC->Notify(Reason);return;}
+        if(!VoyagerLanding::FindExit(this,Position,Facing,Exit))
+        {UE_LOG(LogTemp,Display,TEXT("VOYAGER LANDING REFUSED no safe exit or collision not yet streamed"));if(auto PC=Cast<AVoyagerController>(GetController()))PC->Notify(TEXT("No safe exit beside the ship. Wait for terrain or find a clear landing area."));return;}
+        ResetFlight(Position,Facing,true);GM->LeaveShip(this);
     }
-    else if(auto PC=Cast<AVoyagerController>(GetController()))PC->Notify(TEXT("Fly down to the terrain to land. CTRL descends; E exits below 10 m."));
 }
 
 void AVoyagerShip::ServerSelectTarget_Implementation()
