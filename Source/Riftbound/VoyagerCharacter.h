@@ -22,6 +22,8 @@ public:
     UPROPERTY(Replicated) float Health=100;
     float ScanPulse=0;
     float MiningFeedback=0;
+    bool IsBodycamEnabled() const { return bBodycam; }
+    void ToggleBodycam();
     UFUNCTION(Server,Reliable) void ServerInteract();
     UFUNCTION(Server,Reliable) void ServerTalk(int32 Topic);
     UFUNCTION(Server,Reliable) void ServerEndTalk();
@@ -35,6 +37,8 @@ private:
     TWeakObjectPtr<AVoyagerCitizen> TalkPartner;
     bool bMining=false;
     bool bSprinting=false;
+    bool bBodycam=true;
+    float CameraStride=0.f;
     float NextShot=0,LastServerShot=-10,LastScan=-10,LastTalk=-10;
     void Forward(float Value);
     void Right(float Value);

@@ -1,0 +1,323 @@
+{
+  "prepared_utc": "2026-09-13T05:41:08.690652+00:00",
+  "asset_license": "CC0-1.0",
+  "maps": {
+    "Bark": {
+      "Color": "Art/Nature/Textures/pine_bark_diff_2k.jpg",
+      "Normal": "Art/Nature/Textures/pine_bark_nor_dx_2k.jpg",
+      "Roughness": "Art/Nature/Textures/pine_bark_rough_2k.jpg"
+    },
+    "Leaves": {
+      "Color": "Art/Nature/Textures/tree_small_02_leaves_diff_2k.jpg",
+      "Normal": "Art/Nature/Textures/tree_small_02_leaves_nor_dx_2k.jpg",
+      "Roughness": "Art/Nature/Textures/tree_small_02_leaves_rough_2k.jpg",
+      "Alpha": "Art/Nature/Textures/tree_small_02_leaves_alpha_2k.png"
+    },
+    "Needles": {
+      "Color": "Art/Nature/Textures/pine_sapling_small_twig_diff_2k.jpg",
+      "Normal": "Art/Nature/Textures/pine_sapling_small_twig_nor_dx_2k.jpg",
+      "Roughness": "Art/Nature/Textures/pine_sapling_small_twig_rough_2k.jpg"
+    },
+    "Grass": {
+      "Color": "Art/Nature/Textures/grass_medium_01_diff_2k.jpg",
+      "Normal": "Art/Nature/Textures/grass_medium_01_nor_dx_2k.jpg",
+      "Roughness": "Art/Nature/Textures/grass_medium_01_rough_2k.jpg",
+      "Alpha": "Art/Nature/Textures/grass_medium_01_alpha_2k.png"
+    },
+    "Fern": {
+      "Color": "Art/Nature/Textures/fern_02_diff_2k.jpg",
+      "Normal": "Art/Nature/Textures/fern_02_nor_dx_2k.jpg",
+      "Roughness": "Art/Nature/Textures/fern_02_rough_2k.jpg",
+      "Alpha": "Art/Nature/Textures/fern_02_alpha_2k.png"
+    },
+    "Ground": {
+      "Color": "Art/Nature/Textures/leafy_grass_diff_2k.jpg",
+      "Normal": "Art/Nature/Textures/leafy_grass_nor_dx_2k.jpg",
+      "Roughness": "Art/Nature/Textures/leafy_grass_rough_2k.jpg"
+    },
+    "Rock": {
+      "Color": "Art/Nature/Textures/rock_boulder_cracked_diff_2k.jpg",
+      "Normal": "Art/Nature/Textures/rock_boulder_cracked_nor_dx_2k.jpg",
+      "Roughness": "Art/Nature/Textures/rock_boulder_cracked_rough_2k.jpg"
+    }
+  },
+  "sources": {
+    "pine_bark": {
+      "name": "Pine Bark",
+      "authors": {
+        "Dimitrios Savva": "All"
+      },
+      "asset_page": "https://polyhaven.com/a/pine_bark",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "files": [
+        {
+          "file": "Art/Nature/Textures/pine_bark_diff_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_diff_2k.jpg",
+          "bytes": 3167561,
+          "upstream_md5": "d10980446d36a65a73081cf61bc84992",
+          "sha256": "741f333ab9f8a0996d8a53905b5ac792fab77d7ccb8cac5fbaed8c99b9f6abd5"
+        },
+        {
+          "file": "Art/Nature/Textures/pine_bark_nor_dx_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_nor_dx_2k.jpg",
+          "bytes": 4526173,
+          "upstream_md5": "df0b191cb9b214ca3af649ff4c48e2f2",
+          "sha256": "fd470b8c5fb438aecb5af277f9c34e564076ad642a1484175798f833ad8ec970"
+        },
+        {
+          "file": "Art/Nature/Textures/pine_bark_rough_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_rough_2k.jpg",
+          "bytes": 2085022,
+          "upstream_md5": "9ea974ea3e298b30ee3b7a21ec05b566",
+          "sha256": "a86618f6358a97410b15d226d0b3d52bb203aed8d9a29cfa355769b95df94d03"
+        }
+      ]
+    },
+    "tree_small_02": {
+      "name": "Tree Small 02",
+      "authors": {
+        "Rico Cilliers": "All"
+      },
+      "asset_page": "https://polyhaven.com/a/tree_small_02",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "files": [
+        {
+          "file": "Art/Nature/Textures/tree_small_02_leaves_diff_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/tree_small_02/tree_small_02_leaves_diff_2k.jpg",
+          "bytes": 961870,
+          "upstream_md5": "021ddc0cf1d94b99716a106cede576c7",
+          "sha256": "6c984a46861562f2a20381c54106aa5e07ce0d3fce785907f8d263157e7561af"
+        },
+        {
+          "file": "Art/Nature/Textures/tree_small_02_leaves_nor_dx_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/tree_small_02/tree_small_02_leaves_nor_dx_2k.jpg",
+          "bytes": 2361018,
+          "upstream_md5": "fea7ce2cdb3c6b13233dc980fdbc2af6",
+          "sha256": "ccb19c4d201e140292b0cc9b8c5f298c8eefdb24b82ac10daf7193b4a209c487"
+        },
+        {
+          "file": "Art/Nature/Textures/tree_small_02_leaves_rough_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/tree_small_02/tree_small_02_leaves_rough_2k.jpg",
+          "bytes": 902847,
+          "upstream_md5": "d9e2a970e08ed0af96f360c964cc7bfe",
+          "sha256": "0bbcd4b8d68f1f28aa3619115aa7b00bbdb03215ef1fa5940a8ac1058e075955"
+        },
+        {
+          "file": "Art/Nature/Textures/tree_small_02_leaves_alpha_2k.png",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/tree_small_02/tree_small_02_leaves_alpha_2k.png",
+          "bytes": 636661,
+          "upstream_md5": "4d94de8e4677e92ce6d812871f9cf541",
+          "sha256": "566484c7047ce67af5a4435c1e4da2b773578d73f83ae45dfad0fd442df7b9d5"
+        }
+      ]
+    },
+    "pine_sapling_small": {
+      "name": "Pine Sapling Small",
+      "authors": {
+        "Rob Tuytel": "photography",
+        "Rico Cilliers": "modeling"
+      },
+      "asset_page": "https://polyhaven.com/a/pine_sapling_small",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "files": [
+        {
+          "file": "Art/Nature/Textures/pine_sapling_small_twig_diff_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/pine_sapling_small/pine_sapling_small_twig_diff_2k.jpg",
+          "bytes": 1542464,
+          "upstream_md5": "acb5a3388d67a8cfcdcfcf9c66539fd0",
+          "sha256": "216afcc5da6dca9e6286c516520e221cd1babf8a9cddf141cd4b98c2b10f4df0"
+        },
+        {
+          "file": "Art/Nature/Textures/pine_sapling_small_twig_nor_dx_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/pine_sapling_small/pine_sapling_small_twig_nor_dx_2k.jpg",
+          "bytes": 2589750,
+          "upstream_md5": "a69ded8b028941f01a15ed5895556778",
+          "sha256": "b88ef0676c96edc5f1abd5eef21ad7bc831b934f57d1253a131e819cdf84df6e"
+        },
+        {
+          "file": "Art/Nature/Textures/pine_sapling_small_twig_rough_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/pine_sapling_small/pine_sapling_small_twig_rough_2k.jpg",
+          "bytes": 1067701,
+          "upstream_md5": "8871badcbe2b753fd4e2d359a17c2e22",
+          "sha256": "556762b5f9e99b8899eae19584972da00dfa6569165b45f2c71c60ecc27ad6a6"
+        }
+      ]
+    },
+    "grass_medium_01": {
+      "name": "Grass Medium 01",
+      "authors": {
+        "Rob Tuytel": "Photography",
+        "Rico Cilliers": "Modeling"
+      },
+      "asset_page": "https://polyhaven.com/a/grass_medium_01",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "files": [
+        {
+          "file": "Art/Nature/Textures/grass_medium_01_diff_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/grass_medium_01/grass_medium_01_diff_2k.jpg",
+          "bytes": 1166527,
+          "upstream_md5": "000814eb2149add70695cf71bfb52c4b",
+          "sha256": "f768aa68daf14f37a92dd96621628a5252b169f4d94b4d1cc830d62cd3ac9e68"
+        },
+        {
+          "file": "Art/Nature/Textures/grass_medium_01_nor_dx_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/grass_medium_01/grass_medium_01_nor_dx_2k.jpg",
+          "bytes": 3530060,
+          "upstream_md5": "098178f0afef10d14c1e0a411143df79",
+          "sha256": "b37af8e6b356217b9d916b018f59b632b8a7f0e4696372aa3fe89fc9ce123921"
+        },
+        {
+          "file": "Art/Nature/Textures/grass_medium_01_rough_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/grass_medium_01/grass_medium_01_rough_2k.jpg",
+          "bytes": 1823922,
+          "upstream_md5": "5215e333f7f905ac4e970dfec3a821a6",
+          "sha256": "023c0ad73545f34427578f6b7c34ec731810674cbc12048e11904b7937c39641"
+        },
+        {
+          "file": "Art/Nature/Textures/grass_medium_01_alpha_2k.png",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/grass_medium_01/grass_medium_01_alpha_2k.png",
+          "bytes": 1580653,
+          "upstream_md5": "0810166131307c1094d37e73a8490542",
+          "sha256": "4af2c3d5ebf167764ad3746f8c925dc4fbe28f0df023656599123cb593b793dd"
+        },
+        {
+          "file": "Art/Nature/Sources/grass_medium_01.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/grass_medium_01/grass_medium_01_2k.gltf",
+          "bytes": 27110,
+          "upstream_md5": "784c287f7828f8e30c4d28ebcbd90f6e",
+          "sha256": "aed63929a83fb694e6884e3a5c0fdb962ab8cf9153830247c8201a482ff02664"
+        },
+        {
+          "file": "Art/Nature/Sources/grass_medium_01.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/grass_medium_01/grass_medium_01.bin",
+          "bytes": 1006632,
+          "upstream_md5": "e0527a0561c2dae5b7b5c1b478d8c6bf",
+          "sha256": "f4587cabdb96a2e96d8be644923dc954a248edfaaa717a0ff224cacb898bee1f"
+        }
+      ]
+    },
+    "fern_02": {
+      "name": "Fern 02",
+      "authors": {
+        "Rob Tuytel": "scanning",
+        "Rico Cilliers": "modeling"
+      },
+      "asset_page": "https://polyhaven.com/a/fern_02",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "files": [
+        {
+          "file": "Art/Nature/Textures/fern_02_diff_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/fern_02/fern_02_diff_2k.jpg",
+          "bytes": 993703,
+          "upstream_md5": "ba8bbb9dc9ff55bdc081565cd926d776",
+          "sha256": "9ee18172170728050871772e2cd6d8d37b52f9138e61b49b04486623f9caf84b"
+        },
+        {
+          "file": "Art/Nature/Textures/fern_02_nor_dx_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/fern_02/fern_02_nor_dx_2k.jpg",
+          "bytes": 1369183,
+          "upstream_md5": "b56f5a028d42bc888f624db5c7204820",
+          "sha256": "4c6531d4c3b8f7e149bcbaeb4b1ca28e8d50c6ad7bcd8eff228bcfb756aa57f3"
+        },
+        {
+          "file": "Art/Nature/Textures/fern_02_rough_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/fern_02/fern_02_rough_2k.jpg",
+          "bytes": 626789,
+          "upstream_md5": "8314186165be744ae79952baf4388491",
+          "sha256": "33d8284959dae53a3eeb11d4a38199320e9a64e2710515b2f0a1a71be4cae908"
+        },
+        {
+          "file": "Art/Nature/Textures/fern_02_alpha_2k.png",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/fern_02/fern_02_alpha_2k.png",
+          "bytes": 230089,
+          "upstream_md5": "ff18f7e8e869c58eac8f9c7d7c519f4a",
+          "sha256": "f51eb9b8f9f4b25a882f8fe12d1ef53ba69448bac7e71396ec1f05b684e9ea75"
+        },
+        {
+          "file": "Art/Nature/Sources/fern_02.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/fern_02/fern_02_2k.gltf",
+          "bytes": 6899,
+          "upstream_md5": "904c73900125e017f5e76ac1cdd906fe",
+          "sha256": "50540d37531f93fd693d5340d5b3095c9d6d2834fa05c74bea797d54f290cb6a"
+        },
+        {
+          "file": "Art/Nature/Sources/fern_02.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fern_02/fern_02.bin",
+          "bytes": 176176,
+          "upstream_md5": "c061e9255f7d36ae9ce0e92ef3e100b2",
+          "sha256": "fe1abb762bcbbc7ad9e86925c8080437a62add257d9280e9142fdc85c226e64c"
+        }
+      ]
+    },
+    "leafy_grass": {
+      "name": "Leafy Grass",
+      "authors": {
+        "Charlotte Baglioni": "All"
+      },
+      "asset_page": "https://polyhaven.com/a/leafy_grass",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "files": [
+        {
+          "file": "Art/Nature/Textures/leafy_grass_diff_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_diff_2k.jpg",
+          "bytes": 4766204,
+          "upstream_md5": "8014f4dace676a62ed71b3dd76119dae",
+          "sha256": "8e1c6d21365d4b89bc5a35ab664da98a78dbc3ab9ba6100474881c8619a5b113"
+        },
+        {
+          "file": "Art/Nature/Textures/leafy_grass_nor_dx_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_nor_dx_2k.jpg",
+          "bytes": 6049495,
+          "upstream_md5": "82936efe4dd20543414cb55d47a9f53c",
+          "sha256": "6ad4b29842cb68dd4ccadeaa14f76cc52e7717eded3bac41e537a166be07356b"
+        },
+        {
+          "file": "Art/Nature/Textures/leafy_grass_rough_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_rough_2k.jpg",
+          "bytes": 2274652,
+          "upstream_md5": "b5c551ed91162aab5afbfb03b73ae3f5",
+          "sha256": "34e1733bf4064b6950a575ff57e78c8b7ff71b63749eb48a49221bd65de6fb4f"
+        }
+      ]
+    },
+    "rock_boulder_cracked": {
+      "name": "Rock Boulder Cracked",
+      "authors": {
+        "Dario Barresi": "Processing",
+        "Dimitrios Savva": "Photography"
+      },
+      "asset_page": "https://polyhaven.com/a/rock_boulder_cracked",
+      "license": "CC0-1.0",
+      "license_url": "https://polyhaven.com/license",
+      "files": [
+        {
+          "file": "Art/Nature/Textures/rock_boulder_cracked_diff_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_boulder_cracked/rock_boulder_cracked_diff_2k.jpg",
+          "bytes": 3962095,
+          "upstream_md5": "91b7d0b3d18b1d7b7705cd493149c969",
+          "sha256": "d7010ebf5157dc707f4bb555c74f589e1b794a308c186f6de2271f3ad0ff0da4"
+        },
+        {
+          "file": "Art/Nature/Textures/rock_boulder_cracked_nor_dx_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_boulder_cracked/rock_boulder_cracked_nor_dx_2k.jpg",
+          "bytes": 4142440,
+          "upstream_md5": "5f9d305a1fa6daf77fe78cb6a81d3b16",
+          "sha256": "d1d7b44f36df2260e862b1aa3ed791ee9e79aab233820e67bd23fa98584246a9"
+        },
+        {
+          "file": "Art/Nature/Textures/rock_boulder_cracked_rough_2k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_boulder_cracked/rock_boulder_cracked_rough_2k.jpg",
+          "bytes": 1680734,
+          "upstream_md5": "750c41770beb04180ee936a45c15aecf",
+          "sha256": "511e9df71b8285149303278e1eed2bc70fdc6d7171ed7b3cbf4eefc171673b12"
+        }
+      ]
+    }
+  }
+}

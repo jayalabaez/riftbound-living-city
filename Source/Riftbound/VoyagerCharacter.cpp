@@ -5,6 +5,7 @@
 #include "VoyagerSettlement.h"
 #include "VoyagerWildlife.h"
 #include "VoyagerCitizen.h"
+#include "VoyagerLocalAI.h"
 #include "VoyagerData.h"
 #include "RiftVisual.h"
 #include "Camera/CameraComponent.h"
@@ -87,6 +88,12 @@ void AVoyagerCharacter::SetupPlayerInputComponent(UInputComponent* I)
     I->BindAction("Fire",IE_Pressed,this,&AVoyagerCharacter::StartMine);I->BindAction("Fire",IE_Released,this,&AVoyagerCharacter::StopMine);
     I->BindAction("Interact",IE_Pressed,this,&AVoyagerCharacter::Interact);I->BindAction("Scan",IE_Pressed,this,&AVoyagerCharacter::Scan);
     I->BindAction("Sprint",IE_Pressed,this,&AVoyagerCharacter::Sprint);I->BindAction("Sprint",IE_Released,this,&AVoyagerCharacter::StopSprint);
+    I->BindKey(EKeys::C,IE_Pressed,this,&AVoyagerCharacter::ToggleBodycam);
+}
+void AVoyagerCharacter::ToggleBodycam()
+{
+    bBodycam=!bBodycam;
+    if(auto* PC=Cast<AVoyagerController>(Controller))PC->Notify(bBodycam?TEXT("Field camera: wide lens and subtle walking motion. C switches camera style."):TEXT("Steady explorer camera. C switches camera style."));
 }
 void AVoyagerCharacter::Forward(float V){if(CanAct())AddMovementInput(GetActorForwardVector(),V);}
 void AVoyagerCharacter::Right(float V){if(CanAct())AddMovementInput(GetActorRightVector(),V);}
@@ -108,7 +115,7 @@ void AVoyagerCharacter::Tick(float D)
         const FVector Up=Voyager::SurfaceNormal(PlanetState->SystemSeed,Planet,GetActorLocation());
         GetCharacterMovement()->SetGravityDirection(-Up);
         if(IsLocallyControlled()||HasAuthority())SetActorRotation(Voyager::TangentRotation(Up,GetActorForwardVector()));
-        if(IsLocallyControlled())Tool->SetVisibility(bMining||!AVoyagerSettlement::IsWithinSite(PlanetState->SystemSeed,Planet,Up),true);
+        if(IsLocallyControlled())Tool->SetVisibility(bMining||MiningFeedback>.05f,true);
     }
     Super::Tick(D);ScanPulse=FMath::Max(0.f,ScanPulse-D*.42f);MiningFeedback=FMath::Max(0.f,MiningFeedback-D);
     if(IsLocallyControlled())
@@ -117,6 +124,21 @@ void AVoyagerCharacter::Tick(float D)
         if(bMining&&GetWorld()->TimeSeconds>NextShot){NextShot=GetWorld()->TimeSeconds+.22f;ServerMine(Camera->GetForwardVector());}
         const float Bob=FMath::Sin(GetWorld()->TimeSeconds*10)*FMath::Min(GetVelocity().Size2D()/620.f,1.f);
         Tool->SetRelativeLocation(FVector(42,20+Bob*.6f,-18+Bob*.8f));
+        // A local camera treatment only: authoritative movement and aiming stay intact.
+        // Distance-driven gait stops immediately when standing still, including on
+        // remote spherical worlds where world-XY velocity is not the walking plane.
+        const float Speed=FVector::VectorPlaneProject(GetVelocity(),GetActorUpVector()).Size();
+        const float Gait=GetCharacterMovement()->IsMovingOnGround()?FMath::Clamp(Speed/620.f,0.f,1.f):0.f;
+        CameraStride+=D*Speed*.015f;
+        Camera->ClearAdditiveOffset();
+        Camera->SetFieldOfView(FMath::FInterpTo(Camera->FieldOfView,bBodycam?100.f:90.f,D,5.f));
+        if(bBodycam&&CanAct())
+            Camera->AddAdditiveOffset(FTransform(FRotator(0,0,FMath::Sin(CameraStride*.5f)*.38f*Gait),
+                FVector(0,FMath::Sin(CameraStride*.5f)*.65f*Gait,FMath::Sin(CameraStride)*1.05f*Gait)),0.f);
+        auto& Lens=Camera->PostProcessSettings;
+        Lens.bOverride_VignetteIntensity=true;Lens.VignetteIntensity=bBodycam?.25f:.12f;
+        Lens.bOverride_SceneFringeIntensity=true;Lens.SceneFringeIntensity=bBodycam?.12f:0.f;
+        Lens.bOverride_FilmGrainIntensity=true;Lens.FilmGrainIntensity=bBodycam?.035f:0.f;
     }
     if(HasAuthority())
     {
@@ -216,7 +238,7 @@ void AVoyagerController::UpdateRotation(float D)
     Forward=FQuat(Right,-FMath::DegreesToRadians(PitchDelta)).RotateVector(Forward);
     const FRotator View=FRotationMatrix::MakeFromXZ(Forward,Up).Rotator();SetControlRotation(View);Explorer->FaceRotation(View,D);
 }
-void AVoyagerController::EndPlay(const EEndPlayReason::Type R){HideMenu();Super::EndPlay(R);}
+void AVoyagerController::EndPlay(const EEndPlayReason::Type R){UVoyagerLocalAI::CancelConversation(this);HideMenu();Super::EndPlay(R);}
 void AVoyagerController::SetupInputComponent()
 {
     Super::SetupInputComponent();InputComponent->BindAction("Menu",IE_Pressed,this,&AVoyagerController::ToggleMenu);InputComponent->BindAction("Save",IE_Pressed,this,&AVoyagerController::SaveInput);InputComponent->BindAction("Upgrade",IE_Pressed,this,&AVoyagerController::UpgradeInput);
@@ -227,12 +249,13 @@ void AVoyagerController::SetupInputComponent()
 }
 void AVoyagerController::Notify_Implementation(const FString& Message){Notice=Message;NoticeTime=8.f;}
 void AVoyagerController::ShowConversation_Implementation(AVoyagerCitizen* Citizen,const FString& Speech)
-{ConversationTarget=Citizen;ConversationSpeech=Speech;ConversationTime=20.f;}
+{ConversationTarget=Citizen;ConversationSpeech=Speech;ConversationTime=20.f;UVoyagerLocalAI::EnrichConversation(this,Citizen,Speech);}
 void AVoyagerController::TalkGreeting(){if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(0);}
 void AVoyagerController::TalkLife(){if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(1);}
 void AVoyagerController::TalkDirections(){if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(2);}
 void AVoyagerController::CloseConversation()
 {
+    UVoyagerLocalAI::CancelConversation(this);
     if(ConversationTarget.IsValid())if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerEndTalk();
     ConversationTime=0;ConversationTarget.Reset();ConversationSpeech.Empty();
 }
@@ -263,7 +286,7 @@ void AVoyagerController::ShowMenu()
       +SVerticalBox::Slot().AutoHeight().Padding(0,14,0,4)[Label(TEXT("Join a host IP  /  shared star system  /  up to 4 players"),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SAssignNew(AddressBox,SEditableTextBox).Text(FText::FromString(TEXT("127.0.0.1"))).Font(FCoreStyle::GetDefaultFontStyle("Regular",16))]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){FString Address=AddressBox->GetText().ToString().TrimStartAndEnd();bool Valid=!Address.IsEmpty();for(TCHAR C:Address)if(!FChar::IsAlnum(C)&&C!=TEXT('.')&&C!=TEXT(':')&&C!=TEXT('-'))Valid=false;if(Valid){HideMenu();ClientTravel(Address,TRAVEL_Absolute);}return FReply::Handled();})[Label(TEXT("CONNECT TO EXPEDITION"),14)]]
-      +SVerticalBox::Slot().AutoHeight().Padding(0,18,0,6)[Label(TEXT("ON FOOT  WASD move / F scan / LMB mine / E talk or board\nCITY  Walk through signed doors / 1-3 dialogue / Backspace end\nFLIGHT  WASD thrust / mouse steer / Space rise / Ctrl descend\nShift boost / LMB lasers / E land below 10 m or exit\nSPACE above 60 km / Tab target / J cruise / H next star\nFly directly into or out of the atmosphere."),11)]
+      +SVerticalBox::Slot().AutoHeight().Padding(0,18,0,6)[Label(TEXT("ON FOOT  WASD move / F scan / LMB mine / E talk or board / C camera\nCITY  Walk through signed doors / 1-3 dialogue / Backspace end\nFLIGHT  WASD thrust / mouse steer / Space rise / Ctrl descend\nShift boost / LMB lasers / E land below 10 m or exit\nSPACE above 60 km / Tab target / J cruise / H next star\nFly directly into or out of the atmosphere."),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(10).OnClicked_Lambda([this](){ServerSave();ConsoleCommand(TEXT("quit"));return FReply::Handled();})[Label(TEXT("SAVE AND QUIT"),13)]]
     ]];
     MenuWidget=SNew(SVoyagerMenu).OnClose_Lambda([this](){HideMenu();})[Content];GEngine->GameViewport->AddViewportWidgetContent(MenuWidget.ToSharedRef(),100);

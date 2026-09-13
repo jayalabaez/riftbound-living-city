@@ -7,6 +7,34 @@ import unreal
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / 'Saved' / 'VoyagerCloudsReport.json'
 
+# Integer-hashed corner values interpolated with a smooth cubic curve. Every
+# corner and interpolation lies in [0,1], independent of material noise modes.
+VALUE_NOISE = r'''
+struct FVoyagerValueNoise
+{
+    float Hash(int3 P)
+    {
+        uint3 Q = asuint(P);
+        uint H = Q.x * 1597334677u ^ Q.y * 3812015801u ^ Q.z * 2798796415u;
+        H ^= H >> 16; H *= 2246822519u;
+        H ^= H >> 13; H *= 3266489917u;
+        H ^= H >> 16;
+        return float(H & 0x00ffffffu) / 16777215.0;
+    }
+    float Value(float3 P)
+    {
+        int3 I = int3(floor(P));
+        float3 F = frac(P); F = F * F * (3.0 - 2.0 * F);
+        float A = lerp(Hash(I), Hash(I + int3(1,0,0)), F.x);
+        float B = lerp(Hash(I + int3(0,1,0)), Hash(I + int3(1,1,0)), F.x);
+        float C = lerp(Hash(I + int3(0,0,1)), Hash(I + int3(1,0,1)), F.x);
+        float D = lerp(Hash(I + int3(0,1,1)), Hash(I + int3(1,1,1)), F.x);
+        return saturate(lerp(lerp(A,B,F.y), lerp(C,D,F.y), F.z));
+    }
+};
+FVoyagerValueNoise N;
+'''
+
 def main():
     assets = unreal.get_editor_subsystem(unreal.EditorAssetSubsystem)
     edit = unreal.MaterialEditingLibrary
@@ -33,18 +61,26 @@ def main():
             if not edit.connect_material_expressions(a,out,b,pin): raise RuntimeError('Cannot connect '+a.get_name()+' to '+b.get_name()+'.'+pin)
         def output(n,p):
             if not edit.connect_material_property(n,'',p): raise RuntimeError('Cannot connect '+str(p))
+        def coherent_noise(coords, expression):
+            custom_input = unreal.CustomInput()
+            custom_input.set_editor_property('input_name','P')
+            n = node(unreal.MaterialExpressionCustom,code=VALUE_NOISE+'return '+expression+';',
+                     output_type=unreal.CustomMaterialOutputType.CMOT_FLOAT1,inputs=[custom_input])
+            link(coords,n,'P')
+            return n
         world = node(unreal.MaterialExpressionWorldPosition)
         center = node(unreal.MaterialExpressionVectorParameter,parameter_name='PlanetCenter',default_value=unreal.LinearColor(0,0,-60000000,0))
         rel = node(unreal.MaterialExpressionSubtract); link(world,rel,'A');link(center,rel,'B')
         seed = node(unreal.MaterialExpressionVectorParameter,parameter_name='SeedOffset',default_value=unreal.LinearColor(17.3,28.1,4.8,0))
-        # Broad100km weather systems stay recognizable from orbit; smaller
-        # erosion detail shapes their interior rather than aliasing into dots.
-        km = node(unreal.MaterialExpressionMultiply,const_b=.0000001);link(rel,km,'A')
+        # Weather has broad regional structure plus kilometre-scale erosion,
+        # rather than one opaque cloud blanket stretching across the whole sky.
+        km = node(unreal.MaterialExpressionMultiply,const_b=.0000003);link(rel,km,'A')
         coords = node(unreal.MaterialExpressionAdd);link(km,coords,'A');link(seed,coords,'B')
-        noise = node(unreal.MaterialExpressionNoise,noise_function=unreal.NoiseFunction.NOISEFUNCTION_GRADIENT_TEX3D,scale=1.0,levels=2,quality=1,level_scale=2.1,output_min=0.0,output_max=1.0,turbulence=False)
-        link(coords,noise,'')
-        coverage = node(unreal.MaterialExpressionSmoothStep,const_min=.57,const_max=.72);link(noise,coverage,'Value')
-        albedo = node(unreal.MaterialExpressionConstant3Vector,constant=unreal.LinearColor(.78,.81,.85,1))
+        noise = coherent_noise(coords,'saturate(.6*N.Value(P*.45)+.27*N.Value(P*1.3+17.0)+.13*N.Value(P*3.8-9.0))')
+        coverage_start = node(unreal.MaterialExpressionScalarParameter,parameter_name='CoverageStart',default_value=.57)
+        coverage_end = node(unreal.MaterialExpressionAdd,const_b=.14);link(coverage_start,coverage_end,'A')
+        coverage = node(unreal.MaterialExpressionSmoothStep);link(noise,coverage,'Value');link(coverage_start,coverage,'Min');link(coverage_end,coverage,'Max')
+        albedo = node(unreal.MaterialExpressionConstant3Vector,constant=unreal.LinearColor(.86,.87,.89,1))
         output(albedo,unreal.MaterialProperty.MP_BASE_COLOR)
         if volume:
             attr = node(unreal.MaterialExpressionCloudSampleAttribute)
@@ -53,10 +89,9 @@ def main():
             inv = node(unreal.MaterialExpressionOneMinus);link(upper,inv,'')
             layer = node(unreal.MaterialExpressionMultiply);link(lower,layer,'A');link(inv,layer,'B')
             shape = node(unreal.MaterialExpressionMultiply);link(layer,shape,'A');link(coverage,shape,'B')
-            detail = node(unreal.MaterialExpressionNoise,noise_function=unreal.NoiseFunction.NOISEFUNCTION_GRADIENT_TEX3D,scale=7.0,levels=1,quality=1,output_min=.25,output_max=1.0,turbulence=False)
-            link(coords,detail,'')
+            detail = coherent_noise(coords,'.25+.75*N.Value(P*7.0)')
             eroded = node(unreal.MaterialExpressionMultiply);link(shape,eroded,'A');link(detail,eroded,'B')
-            density = node(unreal.MaterialExpressionMultiply,const_b=.000045);link(eroded,density,'A')
+            density = node(unreal.MaterialExpressionMultiply,const_b=.000004);link(eroded,density,'A')
             output(density,unreal.MaterialProperty.MP_OPACITY)
             node(unreal.MaterialExpressionVolumetricAdvancedMaterialOutput,const_phase_g=.65,const_phase_g2=-.2,const_phase_blend=.2,multi_scattering_approximation_octave_count=1,gray_scale_material=True,ray_march_volume_shadow=True)
         else:
@@ -67,7 +102,9 @@ def main():
         if errors: raise RuntimeError(str(errors))
         if not assets.save_loaded_asset(mat,False): raise RuntimeError('Save failed '+path)
         results.append({'asset':path,'nodes':index,'volume':volume})
-    REPORT.write_text(json.dumps({'status':'success','materials':results},indent=2))
+    REPORT.write_text(json.dumps({'status':'success','materials':results,'weather':'bounded coherent value-noise FBM',
+                                 'noise_range':[0,1],'fbm_weights':[.6,.27,.13],
+                                 'coverage_start':.57,'coverage_softness':.14,'density':.000004},indent=2))
     unreal.log('VOYAGER CLOUDS SUCCESS')
 
 try:

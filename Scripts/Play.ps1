@@ -2,7 +2,8 @@ param(
     [ValidateSet('Solo','Host','Join')][string]$Mode = 'Solo',
     [string]$Address = '127.0.0.1',
     [ValidateSet('Voyager','Survival')][string]$Game = 'Voyager',
-    [switch]$CityVisit
+    [switch]$CityVisit,
+    [switch]$NatureVisit
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -26,8 +27,10 @@ $launchArgs = @(('"' + $project + '"'), $destination, '-game', '-windowed', '-Re
 if ($useStandalone) {
     $launchArgs = @($destination, '-windowed', '-ResX=1600', '-ResY=900', '-NoSplash', '-NoScreenMessages')
     if ($CityVisit -and $Game -eq 'Voyager' -and $Mode -ne 'Join') { $launchArgs += '-VoyagerCityVisit' }
+    if ($NatureVisit -and $Game -eq 'Voyager' -and $Mode -ne 'Join') { $launchArgs += '-VoyagerNatureVisit' }
     Start-Process -FilePath $standalone -ArgumentList $launchArgs -WorkingDirectory (Split-Path -Parent $standalone) -WindowStyle Normal
 } else {
     if ($CityVisit -and $Game -eq 'Voyager' -and $Mode -ne 'Join') { $launchArgs += '-VoyagerCityVisit' }
+    if ($NatureVisit -and $Game -eq 'Voyager' -and $Mode -ne 'Join') { $launchArgs += '-VoyagerNatureVisit' }
     Start-Process -FilePath $editor -ArgumentList $launchArgs -WorkingDirectory $projectRoot -WindowStyle Normal
 }

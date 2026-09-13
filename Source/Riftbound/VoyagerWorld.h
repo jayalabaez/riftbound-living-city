@@ -83,6 +83,7 @@ private:
     UPROPERTY() TObjectPtr<class UVolumetricCloudComponent> Clouds;
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> CloudMaterial;
     UPROPERTY() TObjectPtr<USkyLightComponent> Skylight;
+    UPROPERTY() TObjectPtr<class AVoyagerVegetation> Vegetation;
     UPROPERTY() TArray<TObjectPtr<UProceduralMeshComponent>> AtmosphereShells;
     UPROPERTY() TArray<TObjectPtr<UProceduralMeshComponent>> CloudShells;
     UPROPERTY() TArray<TObjectPtr<UInstancedStaticMeshComponent>> StarFields;

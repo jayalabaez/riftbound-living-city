@@ -6,6 +6,10 @@ An original procedural space-adventure prototype in Unreal Engine 5.8.2. Explore
 
 **Double-click [Play Voyager.cmd](Play%20Voyager.cmd), [Play Riftbound.cmd](Play%20Riftbound.cmd), or the VOYAGER desktop shortcut.** The launcher uses the standalone Windows build when available, otherwise the compiled game through the installed Unreal Engine.
 
+**[Play Riftbound Nature.cmd](Play%20Riftbound%20Nature.cmd)** starts beside your ship on the garden planet in your current system, keeping your cargo and discoveries. Explore scan-textured woodland with grass, ferns, shrubs, rocks and three foliage detail levels. The physical atmosphere and lighting continue from the surface into space. On foot, **C** toggles the bodycam-style walking view.
+
+Residents can use an installed local Ollama `llama3.2:3b` model for short conversational variations. Authored dialogue appears immediately; a valid local reply replaces it while the same conversation remains open. This runs on the CPU to leave GPU memory for the game. Use `voyager.LocalAI 0` in the console or launch with `-NoVoyagerLocalAI` to disable it. Dialogue does not control gameplay, and the game works with Ollama stopped. See [nature asset credits](Art/Nature/PROVENANCE.md) for CC0 sources.
+
 ## Your first journey
 
 1. Press **F** to discover the starting planet and earn minerals. Hold **left mouse** on glowing crystals to mine them.

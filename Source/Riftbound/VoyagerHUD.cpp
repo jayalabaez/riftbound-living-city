@@ -199,7 +199,7 @@ void AVoyagerHUD::DrawHUD()
         Text(TEXT("F  SCAN & DISCOVER"), VW - 305, VH - 76, .63f, Mint);
 
         Action = TEXT("EXPLORE  /  SCAN  /  COLLECT");
-        SubAction = TEXT("WASD move   -   SHIFT sprint   -   SPACE jump");
+        SubAction = TEXT("WASD move   -   SHIFT sprint   -   SPACE jump   -   C camera");
         float NearestShip = TNumericLimits<float>::Max();
         AVoyagerShip* ParkedShip = nullptr;
         for (TActorIterator<AVoyagerShip> It(GetWorld()); It; ++It)

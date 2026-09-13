@@ -17,6 +17,11 @@ $cloudBootstrap = Join-Path $PSScriptRoot 'bootstrap_voyager_clouds.py'
 if ($LASTEXITCODE -ne 0) { throw 'Cloud material generation failed.' }
 $cloudReport = Get-Content -LiteralPath (Join-Path $projectRoot 'Saved\VoyagerCloudsReport.json') -Raw | ConvertFrom-Json
 if ($cloudReport.status -ne 'success') { throw ('Cloud material generation failed: ' + $cloudReport.error) }
+$natureBootstrap = Join-Path $PSScriptRoot 'bootstrap_voyager_nature.py'
+& (Join-Path $engineRoot 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe') $project -unattended '-NullRHI' "-ExecutePythonScript=$natureBootstrap" -NoSplash
+if ($LASTEXITCODE -ne 0) { throw 'Nature asset generation failed.' }
+$natureReport = Get-Content -LiteralPath (Join-Path $projectRoot 'Saved\VoyagerNatureReport.json') -Raw | ConvertFrom-Json
+if ($natureReport.status -ne 'success') { throw 'Nature asset generation failed; inspect the Unreal log.' }
 $cityBootstrap = Join-Path $PSScriptRoot 'bootstrap_voyager_city_materials.py'
 & (Join-Path $engineRoot 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe') $project -unattended '-NullRHI' "-ExecutePythonScript=$cityBootstrap" -NoSplash
 if ($LASTEXITCODE -ne 0) { throw 'City material generation failed.' }

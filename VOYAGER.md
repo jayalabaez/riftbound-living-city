@@ -19,6 +19,7 @@ The settlement marker leads to a city about **320 metres** from the landing site
 - **Left mouse** mines a targeted crystal within 18 metres.
 - **E** talks to the resident you are looking toward within 4 metres, or boards your own ship within 11 metres.
 - During a conversation, **1** greets, **2** asks about daily life, **3** asks for local advice, and **Backspace** ends the conversation. Walking away also ends it.
+- On foot, **C** switches between the bodycam-style walking view and a steady camera. The bodycam view uses a wider field of view, restrained movement and subtle grain; the mining tool appears while used.
 - **U** upgrades your ship's lasers for 75 minerals when aboard or within 13 metres. Five upgrades are available; each also restores hull and shields.
 - **F5** saves the expedition. **Escape** opens the menu.
 
@@ -83,6 +84,7 @@ The host runs one shared star system. Players have separate ships and cargo and 
 - `Scripts/Test-VoyagerLife.ps1`: audit settlements, animals, and all five biomes. Add `-Packaged` to run this audit against the standalone build.
 - `Scripts/Test-VoyagerCity.ps1 -Render`: physically walk into and out of six room types and a remote planetary settlement, climb stairs, and check population, movement, conversations, validation and danger reactions. Add `-Packaged` for the standalone build. Both normal expedition saves are checked for preservation.
 - `Scripts/Test-VoyagerCityNetwork.ps1`: two real processes test city populations on different planets, replicated citizen identities/movement, dialogue and alarm RPCs. Add `-Packaged` to test the standalone build.
+- `Scripts/Test-VoyagerRealism.ps1`: renders natural ground cover, atmosphere fixtures and a remote planet, checks streaming, radial collision and materials, and preserves normal saves. Add `-AI` for a real local Ollama conversation, or `-Packaged` for the standalone build. The altitude fixtures supplement the continuous flight test above.
 - Add `-Render` to an audit/test script to create rendered screenshots.
 - Test reports/logs are retained in `Saved`; tests stop only their own processes.
 

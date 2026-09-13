@@ -32,6 +32,8 @@ Install Unreal Engine 5.8 (developed with 5.8.2), the Visual Studio C++ game dev
 
 Close the Unreal Editor before building. Packaging compiles all runtime modules and cooks both Voyager's Forest map and Living City's Entry map. It writes the Windows build under `Packaged/Riftbound/Windows`.
 
+Natural foliage meshes, PBR textures and materials are included through Git LFS under `Content/Nature`. `Build.ps1` can regenerate them from the included `Art/Nature` sources; optional `python Scripts/bootstrap_voyager_nature.py --prepare` refreshes the documented CC0 downloads and original mesh sources. Runtime streaming uses the existing Procedural Mesh plugin and Unreal's instanced mesh LODs, Sky Atmosphere and Volumetric Cloud components. No paid foliage or bodycam plugin is required. Local NPC dialogue optionally uses Ollama with `llama3.2:3b`; missing Ollama leaves authored dialogue available.
+
 Double-click **Play Voyager City.cmd** to visit a planetary city, **Play Voyager.cmd** for a normal expedition, or **Play Living City.cmd** for the separate simulation. The launchers prefer the local packaged game. Living City's `-Rebuild` option builds and launches through Unreal Editor instead.
 
 ## Validation

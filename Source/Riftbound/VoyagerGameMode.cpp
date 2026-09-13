@@ -16,7 +16,13 @@
 
 namespace
 {
-    bool IsVoyagerTest(){return FParse::Param(FCommandLine::Get(),TEXT("LivingCityIsolationAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityNetAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerLifeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"));}
+    bool IsVoyagerTest(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerRealismAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerAITest"))||FParse::Param(FCommandLine::Get(),TEXT("LivingCityIsolationAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityNetAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerLifeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"));}
+    int32 ArrivalPlanet(int32 System,int32 SavedPlanet)
+    {
+        if(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNatureVisit")))
+            for(int32 Planet=0;Planet<5;++Planet)if(Voyager::Biome(System,Planet)==0)return Planet;
+        return SavedPlanet;
+    }
     FString SaveSlot(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"))?TEXT("Voyager-Automation-Surface"):(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))?TEXT("Voyager-Automation-Network"):(IsVoyagerTest()?TEXT("Voyager-Automation"):TEXT("Voyager-Expedition")));}
     void Tell(AController* C,const FString& Message){if(auto PC=Cast<AVoyagerController>(C))PC->Notify(Message);}
     FVector NorthSite(int32 System,int32 Planet,double X,double Y,double Height)
@@ -60,6 +66,7 @@ void AVoyagerGameMode::BeginPlay()
     Super::BeginPlay();auto State=GetGameState<AVoyagerState>();
     GetWorld()->GetWorldSettings()->bEnableWorldBoundsChecks=false;
     if(LoadedSave&&State){State->SystemSeed=FMath::Max(1,LoadedSave->SystemSeed);State->PlanetIndex=FMath::Clamp(LoadedSave->PlanetIndex,0,4);}
+    if(State)State->PlanetIndex=ArrivalPlanet(State->SystemSeed,State->PlanetIndex);
     WorldBuilder=GetWorld()->SpawnActor<AVoyagerWorld>(FVector::ZeroVector,FRotator::ZeroRotator);
     UE_LOG(LogTemp,Display,TEXT("VOYAGER READY system=%d planet=%d mode=%d"),State->SystemSeed,State->PlanetIndex,State->Mode);
 }
@@ -70,7 +77,7 @@ void AVoyagerGameMode::PreLogin(const FString& Options,const FString& Address,co
 AActor* AVoyagerGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
     const int32 System=LoadedSave?FMath::Max(1,LoadedSave->SystemSeed):1;
-    const int32 Planet=LoadedSave?FMath::Clamp(LoadedSave->PlanetIndex,0,4):0;
+    const int32 Planet=ArrivalPlanet(System,LoadedSave?FMath::Clamp(LoadedSave->PlanetIndex,0,4):0);
     if(Starts.IsEmpty())for(int32 I=0;I<4;++I)
     {
         FActorSpawnParameters Params;Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;

@@ -1,0 +1,413 @@
+{
+  "SM_Broadleaf": {
+    "path": "/Game/Nature/Meshes/SM_Broadleaf",
+    "lods": [
+      {
+        "file": "Art/Nature/Meshes/SM_Broadleaf_LOD0.obj",
+        "triangles": 7872,
+        "vertices": 6852,
+        "bounds_cm": [
+          [
+            -409.899498392965,
+            447.7097541542696
+          ],
+          [
+            -419.03903364541554,
+            341.8351833674706
+          ],
+          [
+            0.0,
+            800.0
+          ]
+        ],
+        "sha256": "2f1e1b5de2cc5c712f9f1452c751c2a51568da13882044498374b0b279e41365"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Broadleaf_LOD1.obj",
+        "triangles": 4304,
+        "vertices": 3868,
+        "bounds_cm": [
+          [
+            -415.69057984249855,
+            453.0179344234499
+          ],
+          [
+            -411.865061559293,
+            347.6611064506111
+          ],
+          [
+            0.0,
+            800.0
+          ]
+        ],
+        "sha256": "e014ba6fe940dabe96bfd692c500577b356b1a13fc1a0693257f3691d7a11229"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Broadleaf_LOD2.obj",
+        "triangles": 2700,
+        "vertices": 2322,
+        "bounds_cm": [
+          [
+            -353.2450766717617,
+            435.3614058563244
+          ],
+          [
+            -416.96437603335625,
+            353.4870295337517
+          ],
+          [
+            0.0,
+            800.0
+          ]
+        ],
+        "sha256": "d02dc99406d480f4dacd81d5664bec9ef86b5566b61c075c9214bbc18b943a3c"
+      }
+    ],
+    "slots": [
+      "M_NatureBark",
+      "M_NatureLeaves"
+    ]
+  },
+  "SM_Conifer": {
+    "path": "/Game/Nature/Meshes/SM_Conifer",
+    "lods": [
+      {
+        "file": "Art/Nature/Meshes/SM_Conifer_LOD0.obj",
+        "triangles": 41067,
+        "vertices": 56051,
+        "bounds_cm": [
+          [
+            -232.36730201328967,
+            275.1282643093184
+          ],
+          [
+            -266.04783370596743,
+            261.7075812915378
+          ],
+          [
+            0.0,
+            1200.0
+          ]
+        ],
+        "sha256": "a6285a1feac3c0298be63bcdb67908c980509157d022f812284fe86bdad7bcef"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Conifer_LOD1.obj",
+        "triangles": 9422,
+        "vertices": 12646,
+        "bounds_cm": [
+          [
+            -225.33261992914143,
+            275.10644004711895
+          ],
+          [
+            -261.6517805825919,
+            261.6960311342245
+          ],
+          [
+            0.0,
+            1200.0
+          ]
+        ],
+        "sha256": "fa9800810401409eee0dce4d4fbacfcfb9cba1b6ef0b0455fdd96a09e04e70c9"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Conifer_LOD2.obj",
+        "triangles": 2480,
+        "vertices": 4027,
+        "bounds_cm": [
+          [
+            -293.4495755427526,
+            293.44957554275265
+          ],
+          [
+            -293.4495755427526,
+            293.44957554275265
+          ],
+          [
+            0.0,
+            1200.0
+          ]
+        ],
+        "sha256": "570b211c2c5d43aee28e264b18c47bfae460103cc98c0f76a79b5208675132ae"
+      }
+    ],
+    "slots": [
+      "M_NatureBark",
+      "M_NatureNeedles"
+    ]
+  },
+  "SM_DryShrub": {
+    "path": "/Game/Nature/Meshes/SM_DryShrub",
+    "lods": [
+      {
+        "file": "Art/Nature/Meshes/SM_DryShrub_LOD0.obj",
+        "triangles": 3516,
+        "vertices": 2640,
+        "bounds_cm": [
+          [
+            -107.69641209598811,
+            138.79002378782357
+          ],
+          [
+            -126.0973815964212,
+            97.40868020561558
+          ],
+          [
+            0.0,
+            140.0
+          ]
+        ],
+        "sha256": "9f02887d16655a6af991df81edb21a44d3b04b7e3b09b03f3956492d4b3e3d8d"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_DryShrub_LOD1.obj",
+        "triangles": 2084,
+        "vertices": 1684,
+        "bounds_cm": [
+          [
+            -108.6011929321171,
+            133.73888994598647
+          ],
+          [
+            -127.67816908338082,
+            95.29570691637558
+          ],
+          [
+            0.0,
+            140.0
+          ]
+        ],
+        "sha256": "6ad67d5c42ba3d22c410350c97d79cc458f13d173e0436f2dd509015b6e2782d"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_DryShrub_LOD2.obj",
+        "triangles": 1440,
+        "vertices": 1140,
+        "bounds_cm": [
+          [
+            -109.50597376824612,
+            133.63518498234586
+          ],
+          [
+            -128.67397022838276,
+            96.17328460403651
+          ],
+          [
+            0.0,
+            140.0
+          ]
+        ],
+        "sha256": "5341498872b92e7ae616e091114d72d6eae8caa3be32ccf7780d2d543f8066f9"
+      }
+    ],
+    "slots": [
+      "M_NatureBark",
+      "M_NatureDryLeaves"
+    ]
+  },
+  "SM_Grass": {
+    "path": "/Game/Nature/Meshes/SM_Grass",
+    "lods": [
+      {
+        "file": "Art/Nature/Meshes/SM_Grass_LOD0.obj",
+        "triangles": 429,
+        "vertices": 477,
+        "bounds_cm": [
+          [
+            -42.5,
+            42.5
+          ],
+          [
+            -41.859706521296864,
+            41.859706521296864
+          ],
+          [
+            0.0,
+            55.0
+          ]
+        ],
+        "sha256": "1efb44e78ba35256f7898e49447a6701318b117b7e4eebd0f440c5cade76552e"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Grass_LOD1.obj",
+        "triangles": 254,
+        "vertices": 302,
+        "bounds_cm": [
+          [
+            -42.5,
+            42.5
+          ],
+          [
+            -41.859706521296864,
+            41.859706521296864
+          ],
+          [
+            0.0,
+            55.0
+          ]
+        ],
+        "sha256": "e35072e1bbc69ba1c696a6da42bf0f7e87e7579e2b7d281d409bdf418974ed25"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Grass_LOD2.obj",
+        "triangles": 104,
+        "vertices": 152,
+        "bounds_cm": [
+          [
+            -42.5,
+            42.5
+          ],
+          [
+            -41.859706521296864,
+            41.859706521296864
+          ],
+          [
+            0.0,
+            55.0
+          ]
+        ],
+        "sha256": "9fda5ce5196929b3b487aec625e0c46051289381b0a0cd9b337ed6008a80f5f2"
+      }
+    ],
+    "slots": [
+      "M_NatureGrass"
+    ]
+  },
+  "SM_Fern": {
+    "path": "/Game/Nature/Meshes/SM_Fern",
+    "lods": [
+      {
+        "file": "Art/Nature/Meshes/SM_Fern_LOD0.obj",
+        "triangles": 2384,
+        "vertices": 1653,
+        "bounds_cm": [
+          [
+            -49.05591343028385,
+            49.05591343028385
+          ],
+          [
+            -55.0,
+            55.0
+          ],
+          [
+            0.0,
+            70.0
+          ]
+        ],
+        "sha256": "d2ae106702a9a4c869b3bed333cedc1bbf8efebb6bec8e6505edbe2368a20937"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Fern_LOD1.obj",
+        "triangles": 1600,
+        "vertices": 1109,
+        "bounds_cm": [
+          [
+            -48.43544882420928,
+            48.43544882420928
+          ],
+          [
+            -55.0,
+            55.0
+          ],
+          [
+            0.0,
+            70.0
+          ]
+        ],
+        "sha256": "1601b967234bd4a64a4b63970f4cb2813ca75e771f28fa1be5ee0c4cff1882c9"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Fern_LOD2.obj",
+        "triangles": 784,
+        "vertices": 544,
+        "bounds_cm": [
+          [
+            -49.4875950031764,
+            49.4875950031764
+          ],
+          [
+            -55.0,
+            55.0
+          ],
+          [
+            0.0,
+            70.0
+          ]
+        ],
+        "sha256": "85abec45535cf716310be84b27475ac7d6823eab8f6298dae8095c2b661d0940"
+      }
+    ],
+    "slots": [
+      "M_NatureFern"
+    ]
+  },
+  "SM_Boulder": {
+    "path": "/Game/Nature/Meshes/SM_Boulder",
+    "lods": [
+      {
+        "file": "Art/Nature/Meshes/SM_Boulder_LOD0.obj",
+        "triangles": 1440,
+        "vertices": 777,
+        "bounds_cm": [
+          [
+            -133.89114846690725,
+            130.45386473211465
+          ],
+          [
+            -108.23675102923801,
+            108.40997409344367
+          ],
+          [
+            0.0,
+            180.0
+          ]
+        ],
+        "sha256": "8ac1acbd2a321c1aabc2ea45f53c35fbbc6a89db50c6ef4cb560949e955e58ab"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Boulder_LOD1.obj",
+        "triangles": 480,
+        "vertices": 273,
+        "bounds_cm": [
+          [
+            -132.0374519125397,
+            124.67442574367915
+          ],
+          [
+            -106.66545190203013,
+            109.25942966556002
+          ],
+          [
+            0.0,
+            180.00000000000003
+          ]
+        ],
+        "sha256": "a39cd18b093f911cd5435a4722b1d3bd79aa7324877806c28538f6ab5c4b5a04"
+      },
+      {
+        "file": "Art/Nature/Meshes/SM_Boulder_LOD2.obj",
+        "triangles": 192,
+        "vertices": 117,
+        "bounds_cm": [
+          [
+            -125.32557425632088,
+            124.67442574367917
+          ],
+          [
+            -105.6639099902056,
+            105.51712684886868
+          ],
+          [
+            0.0,
+            180.0
+          ]
+        ],
+        "sha256": "14aa0efc944e29e16ec7fb37e27e7cc8780768aaab958d27fc9fe7c041f4edd5"
+      }
+    ],
+    "slots": [
+      "M_NatureRock"
+    ]
+  }
+}

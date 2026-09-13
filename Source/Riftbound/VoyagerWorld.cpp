@@ -4,6 +4,7 @@
 #include "VoyagerSettlement.h"
 #include "VoyagerWildlife.h"
 #include "VoyagerCitizen.h"
+#include "VoyagerVegetation.h"
 #include "RiftVisual.h"
 #include "ProceduralMeshComponent.h"
 #include "Async/Async.h"
@@ -26,7 +27,7 @@
 
 namespace
 {
-    constexpr int32 PatchResolution = 24;
+    constexpr int32 PatchResolution = 32;
     constexpr int32 MaxPatchLevel = 18;
     constexpr int32 TargetPatchNodes = 350;
     constexpr int32 MaxResidentPatches = 1500;
@@ -260,6 +261,7 @@ AVoyagerWorld::AVoyagerWorld()
 void AVoyagerWorld::BeginPlay()
 {
     Super::BeginPlay(); RebuildNow();
+    Vegetation=GetWorld()->SpawnActor<AVoyagerVegetation>(FVector::ZeroVector,FRotator::ZeroRotator);
     if(HasAuthority())
     {
         FActorSpawnParameters Params;Params.Owner=this;
@@ -270,6 +272,8 @@ void AVoyagerWorld::BeginPlay()
 }
 void AVoyagerWorld::EndPlay(const EEndPlayReason::Type Reason)
 {
+    if(IsValid(Vegetation))Vegetation->Destroy();
+    Vegetation=nullptr;
     ClearScene();
     Super::EndPlay(Reason);
 }
@@ -311,7 +315,8 @@ void AVoyagerWorld::RebuildNow()
     BuiltSystem = State->SystemSeed;
     BuiltRevision = State->Revision;
     GatherViews();
-    UMaterialInterface* Surface = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_VoyagerTerrain.M_VoyagerTerrain"));
+    UMaterialInterface* Surface = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Nature/Materials/M_NatureTerrain.M_NatureTerrain"));
+    if(!Surface)Surface=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_VoyagerTerrain.M_VoyagerTerrain"));
     for (int32 P = 0; P < Voyager::PlanetCount; ++P)
     {
         const FLinearColor Tint = Voyager::BiomeColor(Voyager::Biome(BuiltSystem, P));
@@ -322,8 +327,11 @@ void AVoyagerWorld::RebuildNow()
         Material->SetVectorParameterValue(TEXT("LandTint"), Tint * 1.28f);
         Material->SetVectorParameterValue(TEXT("PlanetCenter"), FLinearColor(float(Center.X), float(Center.Y), float(Center.Z), 1.f));
         Material->SetScalarParameterValue(TEXT("PlanetRadius"), float(Voyager::PlanetRadius(BuiltSystem, P)));
-        static const float SnowCoverage[]={.18f,.025f,.72f,0.f,.045f};
+        static const float SnowCoverage[]={0.f,0.f,.72f,0.f,.025f};
         Material->SetScalarParameterValue(TEXT("SnowCoverage"),SnowCoverage[Voyager::Biome(BuiltSystem,P)]);
+        static const FLinearColor FarLand[]={FLinearColor(.045f,.095f,.025f),FLinearColor(.24f,.15f,.07f),
+            FLinearColor(.38f,.45f,.5f),FLinearColor(.07f,.045f,.035f),FLinearColor(.10f,.13f,.09f)};
+        Material->SetVectorParameterValue(TEXT("FarLandTint"),FarLand[Voyager::Biome(BuiltSystem,P)]);
         Material->SetVectorParameterValue(TEXT("SeedOffset"), FLinearColor(float(Seed % 997) * .117f, float(Voyager::Hash(Seed) % 991) * .131f, float(Voyager::Hash(Seed + 37) % 983) * .109f));
         GroundMaterials.Add(Material);
     }
@@ -498,17 +506,34 @@ void AVoyagerWorld::BuildLighting()
 {
     if (GetNetMode() == NM_DedicatedServer) return;
     auto* Sun = Component<UDirectionalLightComponent>(this, TEXT("VoyagerSun"), SceneComponents);
+    Sun->SetMobility(EComponentMobility::Movable);
     Sun->SetRelativeRotation(FRotator(-32.f, -47.f, 0.f));
-    Sun->SetLightColor(FLinearColor(1.f, .91f, .78f));
-    Sun->SetIntensity(6.5f);
+    Sun->SetLightColor(FLinearColor(1.f, .965f, .91f));
+    Sun->SetIntensity(9.f);
     Sun->SetCastShadows(true);
     Sun->SetAtmosphereSunLight(true);
+    Sun->SetAtmosphereSunLightIndex(0);
+    Sun->SetForwardShadingPriority(1);
+    Sun->DynamicShadowDistanceMovableLight = 65000.f;
+    Sun->DynamicShadowCascades = 4;
+    Sun->bUseRayTracedDistanceFieldShadows = false;
+    Sun->bPerPixelAtmosphereTransmittance = true;
+    // The cloud shadow map loses useful coverage on these translated small
+    // planets. Keep local terrain/foliage shadows and atmospheric extinction.
+    Sun->bCastCloudShadows = false;
+    Sun->CloudShadowExtent = 35.f;
+    Sun->CloudShadowStrength = .42f;
+    Sun->LightSourceAngle = .5357f;
+    Sun->ContactShadowLength = .03f;
     Sun->RegisterComponent();
     auto* Fill = Component<UDirectionalLightComponent>(this, TEXT("StellarAmbient"), SceneComponents);
+    Fill->SetMobility(EComponentMobility::Movable);
     Fill->SetRelativeRotation(FRotator(-50.f, 138.f, 0.f));
     Fill->SetLightColor(FLinearColor(.37f, .54f, .82f));
-    Fill->SetIntensity(1.8f);
+    Fill->SetIntensity(.12f);
     Fill->SetCastShadows(false);
+    Fill->SetAtmosphereSunLight(false);
+    Fill->SetForwardShadingPriority(0);
     Fill->RegisterComponent();
     Atmosphere = Component<USkyAtmosphereComponent>(this, TEXT("PhysicalPlanetAtmosphere"), SceneComponents);
     Atmosphere->SetMobility(EComponentMobility::Movable);
@@ -516,8 +541,12 @@ void AVoyagerWorld::BuildLighting()
     Atmosphere->SetAtmosphereHeight(float(Voyager::AtmosphereHeight / Voyager::CentimetersPerKm));
     Atmosphere->SetRayleighExponentialDistribution(8.f);
     Atmosphere->SetMieExponentialDistribution(1.2f);
-    Atmosphere->SetMieScatteringScale(.8f);
-    Atmosphere->MultiScatteringFactor = 1.5f;
+    // These are extinction coefficients per kilometer, not unit multipliers.
+    // Earth-like optical depth keeps daylight blue and distant terrain visible.
+    Atmosphere->SetRayleighScatteringScale(.0331f);
+    Atmosphere->SetMieScatteringScale(.003996f);
+    Atmosphere->SetMieAbsorptionScale(.000444f);
+    Atmosphere->MultiScatteringFactor = 1.f;
     Atmosphere->TraceSampleCountScale = 2.f;
     Atmosphere->RegisterComponent();
     if(auto* CloudBase=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_VoyagerCloudVolume.M_VoyagerCloudVolume")))
@@ -526,19 +555,20 @@ void AVoyagerWorld::BuildLighting()
         Clouds->SetMobility(EComponentMobility::Movable);
         CloudMaterial=UMaterialInstanceDynamic::Create(CloudBase,this);
         Clouds->SetMaterial(CloudMaterial);
-        // SkyAtmosphere's ground is 3km beneath nominal sea level; clouds start 3km above it.
-        Clouds->SetLayerBottomAltitude(6.f);Clouds->SetLayerHeight(4.5f);
+        // The atmosphere floor is 3km beneath nominal terrain, so clouds start 2.2km above it.
+        Clouds->SetLayerBottomAltitude(5.2f);Clouds->SetLayerHeight(3.2f);
         Clouds->SetTracingStartMaxDistance(2000.f);Clouds->SetTracingMaxDistance(160.f);
         Clouds->SetViewSampleCountScale(1.2f);Clouds->SetShadowViewSampleCountScale(.5f);
         Clouds->SetShadowTracingDistance(8.f);Clouds->SetReflectionViewSampleCountScale(.2f);
-        Clouds->SetSkyLightCloudBottomOcclusion(.4f);
-        Clouds->SetVisibleInRealTimeSkyCaptures(false);
+        Clouds->SetSkyLightCloudBottomOcclusion(.25f);
+        Clouds->SetVisibleInRealTimeSkyCaptures(true);
         Clouds->SetbUsePerSampleAtmosphericLightTransmittance(true);
         Clouds->RegisterComponent();
     }
     Skylight = Component<USkyLightComponent>(this, TEXT("PlanetSkylight"), SceneComponents);
-    Skylight->SetIntensity(1.2f);
-    Skylight->SetRealTimeCapture(true);
+    Skylight->SetMobility(EComponentMobility::Movable);
+    Skylight->SetIntensity(1.f);
+    Skylight->bRealTimeCapture = true;
     Skylight->RegisterComponent();
     auto* Post = Component<UPostProcessComponent>(this, TEXT("VoyagerExposure"), SceneComponents);
     Post->bUnbound = true;
@@ -547,13 +577,23 @@ void AVoyagerWorld::BuildLighting()
     Post->Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
     Post->Settings.AutoExposureApplyPhysicalCameraExposure = false;
     Post->Settings.bOverride_AutoExposureBias = true;
-    Post->Settings.AutoExposureBias = .35f;
+    Post->Settings.AutoExposureBias = -.15f;
     Post->Settings.bOverride_BloomIntensity = true;
-    Post->Settings.BloomIntensity = .28f;
+    Post->Settings.BloomIntensity = .12f;
     Post->Settings.bOverride_VignetteIntensity = true;
     Post->Settings.VignetteIntensity = .16f;
     Post->Settings.bOverride_MotionBlurAmount = true;
     Post->Settings.MotionBlurAmount = 0.f;
+    Post->Settings.bOverride_AmbientOcclusionIntensity = true;
+    Post->Settings.AmbientOcclusionIntensity = .65f;
+    Post->Settings.bOverride_AmbientOcclusionRadius = true;
+    Post->Settings.AmbientOcclusionRadius = 120.f;
+    Post->Settings.bOverride_AmbientOcclusionQuality = true;
+    Post->Settings.AmbientOcclusionQuality = 75.f;
+    Post->Settings.bOverride_ReflectionMethod = true;
+    Post->Settings.ReflectionMethod = EReflectionMethod::ScreenSpace;
+    Post->Settings.bOverride_ScreenSpaceReflectionQuality = true;
+    Post->Settings.ScreenSpaceReflectionQuality = 65.f;
     Post->RegisterComponent();
 }
 void AVoyagerWorld::UpdateAtmosphere()
@@ -563,16 +603,31 @@ void AVoyagerWorld::UpdateAtmosphere()
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
         if (const APlayerController* PC = It->Get())
             if (PC->IsLocalController()) { FRotator Rotation; PC->GetPlayerViewPoint(Eye, Rotation); break; }
-    for (UInstancedStaticMeshComponent* Stars : StarFields) Stars->SetWorldLocation(Eye);
     const int32 Nearest = Voyager::NearestPlanet(BuiltSystem, Eye);
+    // A capture at the universe origin samples black space on remote planets.
+    // Follow the local camera in bounded increments; real-time capture refreshes it.
+    if(Skylight&&FVector::DistSquared(Skylight->GetComponentLocation(),Eye)>FMath::Square(5000.0))
+        Skylight->SetWorldLocation(Eye);
+    const double Altitude = Voyager::SurfaceAltitude(BuiltSystem, Nearest, Eye);
+    const FVector Up = Voyager::SurfaceNormal(BuiltSystem, Nearest, Eye);
+    const double Daylight = FVector::DotProduct(Up, -FRotator(-32.f, -47.f, 0.f).Vector());
+    for (UInstancedStaticMeshComponent* Stars : StarFields)
+    {
+        Stars->SetWorldLocation(Eye);
+        const float EscapeFade=float(FMath::SmoothStep(1600000.0,5000000.0,Altitude));
+        const float NightFade=float(1.0-FMath::SmoothStep(-.2,.05,Daylight));
+        const float Visibility=FMath::Max(EscapeFade,NightFade);
+        Stars->SetVisibility(Visibility>.001f);
+        if(auto* Material=Cast<UMaterialInstanceDynamic>(Stars->GetMaterial(0)))Material->SetScalarParameterValue(TEXT("Glow"),Visibility*2.f);
+    }
     if (Nearest == AtmospherePlanet) return;
     AtmospherePlanet = Nearest;
     Atmosphere->SetWorldLocation(Voyager::PlanetCenter(BuiltSystem, Nearest));
     // The terrain includes valleys below nominal radius; the atmosphere ground must not clip them.
     Atmosphere->SetBottomRadius(float((Voyager::PlanetRadius(BuiltSystem, Nearest) - 300000.0) / Voyager::CentimetersPerKm));
     Atmosphere->SetAtmosphereHeight(float((Voyager::AtmosphereHeight + 300000.0) / Voyager::CentimetersPerKm));
-    Atmosphere->SetGroundAlbedo(Voyager::BiomeColor(Voyager::Biome(BuiltSystem, Nearest)).ToFColor(true));
-    Atmosphere->SetSkyLuminanceFactor(FLinearColor(.85f, .93f, 1.f));
+    Atmosphere->SetGroundAlbedo(FColor(90, 95, 85));
+    Atmosphere->SetSkyLuminanceFactor(FLinearColor::White);
     if(Clouds&&CloudMaterial)
     {
         const FVector C=Voyager::PlanetCenter(BuiltSystem,Nearest);
@@ -582,6 +637,8 @@ void AVoyagerWorld::UpdateAtmosphere()
         Clouds->SetGroundAlbedo(Voyager::BiomeColor(Voyager::Biome(BuiltSystem,Nearest)).ToFColor(true));
         CloudMaterial->SetVectorParameterValue(TEXT("PlanetCenter"),FLinearColor(float(C.X),float(C.Y),float(C.Z),0));
         CloudMaterial->SetVectorParameterValue(TEXT("SeedOffset"),FLinearColor(float(Seed%97)*.117f,float(Seed%73)*.131f,float(Seed%53)*.109f,0));
+        static const float Coverage[]={.57f,.66f,.58f,.72f,.56f};
+        CloudMaterial->SetScalarParameterValue(TEXT("CoverageStart"),Coverage[Voyager::Biome(BuiltSystem,Nearest)]);
     }
     for (int32 P = 0; P < AtmosphereShells.Num(); ++P)
         if (AtmosphereShells[P]) AtmosphereShells[P]->SetVisibility(P != Nearest);
@@ -601,8 +658,8 @@ void AVoyagerWorld::BuildBackdrop()
         const float Size = Random.FRandRange(90000.f, 240000.f);
         Instance(I % 7 ? Stars : Warm, Direction * 2.e10, FVector(Size));
     }
-    Part(this, SceneComponents, TEXT("DistantStar"), TEXT("Sphere"), -FRotator(-32.f, -47.f, 0.f).Vector() * 2.e10,
-        FVector(5000000.f), FLinearColor(1.f, .8f, .51f), true);
+    // SkyAtmosphere draws the physical sun disk; an extra emissive sphere would
+    // double it and ignore atmospheric extinction on approach to the horizon.
     UMaterialInterface* RimBase = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_VoyagerAtmosphere.M_VoyagerAtmosphere"));
     AtmosphereShells.SetNum(Voyager::PlanetCount);
     CloudShells.SetNum(Voyager::PlanetCount);
@@ -654,6 +711,8 @@ void AVoyagerWorld::BuildBackdrop()
             auto* CloudMID=UMaterialInstanceDynamic::Create(CloudBase,this);
             CloudMID->SetVectorParameterValue(TEXT("PlanetCenter"),FLinearColor(float(Center.X),float(Center.Y),float(Center.Z),0));
             CloudMID->SetVectorParameterValue(TEXT("SeedOffset"),FLinearColor(float(Seed%97)*.117f,float(Seed%73)*.131f,float(Seed%53)*.109f,0));
+            static const float Coverage[]={.57f,.66f,.58f,.72f,.56f};
+            CloudMID->SetScalarParameterValue(TEXT("CoverageStart"),Coverage[Voyager::Biome(BuiltSystem,P)]);
             Veil->SetMaterial(0,CloudMID);Veil->RegisterComponent();
             for(FVector& Vertex:V)Vertex*=((Voyager::PlanetRadius(BuiltSystem,P)+500000.0)/Radius);
             Veil->CreateMeshSection_LinearColor(0,V,T,N,UV,C,Tangents,false);
@@ -729,86 +788,7 @@ void AVoyagerWorld::BuildDetailCell(uint64 K)
     const double Radius = Voyager::PlanetRadius(BuiltSystem, P);
     Cell.Origin = Voyager::SurfacePoint(BuiltSystem, P, PatchDirection(K));
     const uint32 Seed = Voyager::Hash(uint32(Voyager::PlanetSeed(BuiltSystem, P)) ^ uint32(K) ^ uint32(K >> 32));
-    FRandomStream Random{int32(Seed)};
-    const FString Prefix = FString::Printf(TEXT("SurfaceLife_%llu_%d"), K, BuiltRevision);
-    if (GetNetMode() != NM_DedicatedServer)
-    {
-        static const FLinearColor RockColors[] = {FLinearColor(.25f, .33f, .29f), FLinearColor(.49f, .26f, .13f),
-            FLinearColor(.46f, .64f, .7f), FLinearColor(.12f, .09f, .1f), FLinearColor(.24f, .2f, .37f)};
-        static const FLinearColor CrownColors[] = {FLinearColor(.17f, .56f, .35f), FLinearColor(.98f, .57f, .16f),
-            FLinearColor(.075f, .19f, .17f), FLinearColor(.43f, .16f, .07f), FLinearColor(.65f, .26f, .87f)};
-        auto* Rocks = Instances(this, Cell.Components, Prefix + TEXT("_Rocks"), TEXT("Sphere"), RockColors[B], Cell.Origin);
-        if(GroundMaterials.IsValidIndex(P))Rocks->SetMaterial(0,GroundMaterials[P]);
-        auto* Stems = Instances(this, Cell.Components, Prefix + TEXT("_Stems"), TEXT("Cylinder"),
-            B == 4 ? FLinearColor(.36f, .61f, .67f) : FLinearColor(.22f, .14f, .075f), Cell.Origin);
-        auto* Crowns = Instances(this, Cell.Components, Prefix + TEXT("_Crowns"), B == 0 || B == 4 ? TEXT("Sphere") : TEXT("Cone"), CrownColors[B], Cell.Origin);
-        auto* Accents = Instances(this, Cell.Components, Prefix + TEXT("_Accents"), TEXT("Sphere"),
-            B == 4 ? FLinearColor(.22f, 1.f, .72f) : B==2?FLinearColor(.79f,.85f,.88f):CrownColors[B] * 1.3f, Cell.Origin, B == 3 || B == 4);
-        auto* Grass = Instances(this, Cell.Components, Prefix + TEXT("_Grass"), TEXT("Cone"), CrownColors[B] * .7f, Cell.Origin);
-        const int32 Population = FMath::Clamp(int32(FMath::Square(PatchWidth(BuiltSystem, K)) / 280000.0), 18, 100);
-        for (int32 I = 0; I < Population; ++I)
-        {
-            const FVector Up = CubeDirection(F, U0 + Span * Random.FRand(), V0 + Span * Random.FRand());
-            const double NorthDistance = (Up - FVector::UpVector).Size() * Radius;
-            if (NorthDistance < 1700.0) continue;
-            if(AVoyagerSettlement::IsWithinSite(BuiltSystem,P,Up,600.0))continue;
-            if((Up-FVector(2100,900,Radius).GetSafeNormal()).Size()*Radius<650.0)continue;
-            const FVector World = Voyager::SurfacePoint(BuiltSystem, P, Up);
-            const FVector Position = World - Cell.Origin;
-            const float Size = Random.FRandRange(.65f, 2.3f);
-            const float Yaw = Random.FRandRange(0.f, 360.f);
-            const FQuat Frame = Voyager::TangentRotation(Up).Quaternion() * FRotator(0, Yaw, 0).Quaternion();
-            const FRotator Rotation = Frame.Rotator();
-            const FVector Side = Frame.GetAxisX();
-            if (I < Population / 3)
-            {
-                if (B == 0)
-                {
-                    const float H = Random.FRandRange(380.f, 790.f);
-                    Instance(Stems, Position + Up * H * .42f, FVector(.36f * Size, .36f * Size, H / 100.f), Rotation);
-                    Instance(Crowns, Position + Up * H, FVector(2.9f * Size, 2.6f * Size, 2.5f * Size), Rotation);
-                    Instance(Crowns, Position + Up * H * .83f + Side * 90.f * Size, FVector(2.2f * Size, 2.2f * Size, 1.9f * Size), Rotation);
-                    for(int32 Branch=0;Branch<5;++Branch)
-                    {
-                        const double A=Branch*UE_TWO_PI/5.0;
-                        const FVector S=Frame.RotateVector(FVector(FMath::Cos(A),FMath::Sin(A),0));
-                        Instance(Crowns,Position+Up*(H*.75f+Branch*19.f)+S*150.f*Size,FVector(1.7f*Size,1.4f*Size,1.1f*Size),Rotation);
-                    }
-                }
-                else if(B==2)
-                {
-                    const float H=520.f*Size;
-                    Instance(Stems,Position+Up*H*.46f,FVector(.28f*Size,.28f*Size,H/100.f),Rotation);
-                    for(int32 Tier=0;Tier<4;++Tier)
-                    {
-                        const float Width=(2.9f-Tier*.57f)*Size;
-                        const FVector Layer=Position+Up*(H*(.34f+Tier*.16f));
-                        Instance(Crowns,Layer,FVector(Width,Width,H*.43f/100.f),Rotation);
-                        Instance(Accents,Layer+Up*(H*.10f),FVector(Width*.74f,Width*.74f,.30f*Size),Rotation);
-                    }
-                }
-                else if (B == 4)
-                {
-                    const float H = 190.f * Size;
-                    Instance(Stems, Position + Up * H * .5f, FVector(.35f * Size, .35f * Size, H / 100.f), Rotation);
-                    Instance(Crowns, Position + Up * H, FVector(3.9f * Size, 3.9f * Size, 1.15f * Size), Rotation);
-                    Instance(Accents, Position + Up * (H - 28.f * Size), FVector(3.1f * Size, 3.1f * Size, .17f), Rotation);
-                }
-                else
-                {
-                    const float H = (B == 2 ? 370.f : 220.f) * Size;
-                    Instance(Crowns, Position + Up * H * .47f, FVector(1.2f * Size, 1.2f * Size, H / 100.f), Rotation);
-                    Instance(Rocks, Position + Up * Size * 24.f, FVector(1.9f * Size, 1.5f * Size, Size * .8f), Rotation);
-                    if (B == 3) Instance(Accents, Position + Side * 45.f + Up * 8.f, FVector(1.8f * Size, .15f, .07f), Rotation);
-                }
-            }
-            else
-            {
-                Instance(Rocks, Position + Up * Size * 14.f, FVector(Size * .9f, Size * .65f, Size * .5f), Rotation);
-                if (B == 0 || B == 4) Instance(Grass, Position + Side * 55.f + Up * 31.f, FVector(.45f, .2f, .75f * Size), Rotation);
-            }
-        }
-    }
+    // Natural decoration is streamed by AVoyagerVegetation; these cells own resources.
     if (!HasAuthority()) return;
     int32 ResourceCount = 0;
     for (const auto& Pair : DetailCells)
