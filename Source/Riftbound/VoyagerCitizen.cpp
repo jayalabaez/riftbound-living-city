@@ -1,4 +1,5 @@
 #include "VoyagerCitizen.h"
+#include "VoyagerLaw.h"
 #include "VoyagerData.h"
 #include "VoyagerGameMode.h"
 #include "VoyagerSettlement.h"
@@ -20,26 +21,7 @@ namespace
     int32 BuildingNode(int32 Building,int32 Offset=3) { return StreetNodes+Building*NodesPerBuilding+Offset; }
     bool IsStreetNode(int32 Node) { return Node<StreetNodes||(Node-StreetNodes)%NodesPerBuilding==0; }
 
-    USceneComponent* CitizenJoint(AActor* Owner,USceneComponent* Parent,FVector At,TArray<TObjectPtr<UActorComponent>>& Parts)
-    {
-        auto Joint=NewObject<USceneComponent>(Owner);Joint->SetupAttachment(Parent);Joint->SetRelativeLocation(At);
-        Joint->RegisterComponent();Parts.Add(Joint);return Joint;
-    }
 
-    UMaterialInstanceDynamic* CitizenMaterial(AActor* Owner,FLinearColor Tint,bool bSkin=false)
-    {
-        auto Base=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_VoyagerCitizen.M_VoyagerCitizen"));
-        if(!Base)Base=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_Surface.M_Surface"));
-        if(!Base)Base=LoadObject<UMaterialInterface>(nullptr,TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-        auto Result=UMaterialInstanceDynamic::Create(Base,Owner);
-        if(Result)
-        {
-            Result->SetVectorParameterValue(TEXT("Tint"),Tint);Result->SetVectorParameterValue(TEXT("Color"),Tint);
-            Result->SetScalarParameterValue(TEXT("IsSkin"),bSkin?1.f:0.f);Result->SetScalarParameterValue(TEXT("Roughness"),bSkin?.65f:.84f);
-            Result->SetScalarParameterValue(TEXT("DetailScale"),1.f);
-        }
-        return Result;
-    }
 }
 
 AVoyagerCitizen::AVoyagerCitizen()
@@ -86,7 +68,7 @@ void AVoyagerCitizen::BeginPlay()
 
 void AVoyagerCitizen::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
-    Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerCitizen,Identity);DOREPLIFETIME(AVoyagerCitizen,Pose);
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerCitizen,Identity);DOREPLIFETIME(AVoyagerCitizen,Pose);DOREPLIFETIME(AVoyagerCitizen,Health);DOREPLIFETIME(AVoyagerCitizen,DeathTime);
 }
 
 void AVoyagerCitizen::OnRep_Identity() { if(HasActorBegunPlay()&&Identity.bInitialized)BuildVisuals(); }
@@ -120,6 +102,7 @@ FString AVoyagerCitizen::RoleName() const
 
 FString AVoyagerCitizen::ActivityName() const
 {
+    if(!IsAlive())return TEXT("Deceased");
     static const TCHAR* Activities[]={TEXT("Walking to next stop"),TEXT("On shift"),TEXT("Taking a meal break"),TEXT("At home"),TEXT("Patrolling the district"),TEXT("Taking a break"),TEXT("Investigating a disturbance"),TEXT("Seeking shelter"),TEXT("Speaking with you")};
     return Activities[FMath::Clamp(int32(Pose.Activity),0,8)];
 }
@@ -227,6 +210,7 @@ void AVoyagerCitizen::ChooseActivity()
 
 FString AVoyagerCitizen::TalkTo(APawn* Player,int32 Topic)
 {
+    if(!IsAlive())return FString();
     if(!HasAuthority()||!IsValid(Player)||Player->GetWorld()!=GetWorld()||!Player->IsPlayerControlled()||!Identity.bInitialized)return FString();
     const auto State=GetWorld()->GetGameState<AVoyagerState>();
     if(!State||State->SystemSeed!=Identity.System||State->bTransitioning)return FString();
@@ -270,6 +254,7 @@ void AVoyagerCitizen::EndConversation(APawn* Player)
 
 void AVoyagerCitizen::NotifyDisturbance(const FVector& Position)
 {
+    if(!IsAlive())return;
     if(!HasAuthority()||!Identity.bInitialized)return;
     const float Time=float(SynchronizedTime());
     if(Time-LastAlarmTime<1.5f||FVector::DistSquared(GetActorLocation(),Position)>FMath::Square(14000.f))return;
@@ -291,7 +276,7 @@ void AVoyagerCitizen::NotifyDisturbance(const FVector& Position)
 
 void AVoyagerCitizen::Simulate(float D)
 {
-    if(!Identity.bInitialized)return;
+    if(!Identity.bInitialized||!IsAlive())return;
     const auto State=GetWorld()->GetGameState<AVoyagerState>();
     if(!State||State->SystemSeed!=Identity.System||State->bTransitioning)return;
     const float Time=float(SynchronizedTime());const FVector Position=PathPosition;
@@ -364,7 +349,7 @@ void AVoyagerCitizen::Simulate(float D)
     for(TActorIterator<AVoyagerCitizen> It(GetWorld());It;++It)
     {
         const auto Other=*It;
-        if(Other==this||Other->Identity.Planet!=Identity.Planet||Other->Identity.Site!=Identity.Site)continue;
+        if(Other==this||!Other->IsAlive()||Other->Identity.Planet!=Identity.Planet||Other->Identity.Site!=Identity.Site)continue;
         const FVector ToOther=FVector::VectorPlaneProject(Other->GetActorLocation()-GetActorLocation(),Up);
         if(ToOther.SizeSquared()>FMath::Square(105.f)||FVector::DotProduct(ToOther,Direction)<15.f)continue;
         const double Alignment=FVector::DotProduct(Direction,Other->GetActorForwardVector());
@@ -398,107 +383,6 @@ void AVoyagerCitizen::Simulate(float D)
         Pose.Rotation=FQuat::Slerp(GetActorQuat(),Target,1.f-FMath::Exp(-D*9.f)).GetNormalized().Rotator();
     }
     PathPosition=NewPosition;Pose.Location=BodyPosition;Pose.ServerTime=Time;SetActorLocationAndRotation(BodyPosition,Pose.Rotation,false);
-}
-
-void AVoyagerCitizen::ClearVisuals()
-{
-    for(int32 I=Parts.Num()-1;I>=0;--I)if(IsValid(Parts[I]))Parts[I]->DestroyComponent();
-    Parts.Empty();Materials.Empty();DetailParts.Empty();Hips.Empty();Knees.Empty();Shoulders.Empty();Elbows.Empty();
-    BodyRoot=nullptr;HeadPivot=nullptr;bVisualsBuilt=false;
-}
-
-void AVoyagerCitizen::BuildVisuals()
-{
-    if(!Identity.bInitialized||GetNetMode()==NM_DedicatedServer)return;
-    ClearVisuals();FRandomStream Appearance(Identity.Seed);
-    static const FLinearColor Uniforms[]={FLinearColor(.21f,.29f,.31f),FLinearColor(.44f,.28f,.14f),FLinearColor(.26f,.18f,.32f),FLinearColor(.66f,.73f,.69f),FLinearColor(.075f,.12f,.18f),FLinearColor(.30f,.39f,.19f)};
-    static const FLinearColor Skin[]={FLinearColor(.50f,.30f,.19f),FLinearColor(.25f,.12f,.065f),FLinearColor(.69f,.44f,.30f),FLinearColor(.37f,.21f,.12f),FLinearColor(.77f,.56f,.42f)};
-    const FLinearColor Cloth=Uniforms[Identity.Role]*Appearance.FRandRange(.82f,1.14f);
-    Materials.Add(CitizenMaterial(this,Cloth));
-    Materials.Add(CitizenMaterial(this,FLinearColor(.10f,.115f,.125f)));
-    Materials.Add(CitizenMaterial(this,Skin[Appearance.RandRange(0,4)],true));
-    Materials.Add(CitizenMaterial(this,FLinearColor(.035f,.027f,.022f)));
-    Materials.Add(CitizenMaterial(this,Identity.Role==3?FLinearColor(.56f,.095f,.055f):FLinearColor(.67f,.61f,.40f)));
-    Materials.Add(CitizenMaterial(this,FLinearColor(.075f,.16f,.19f)));
-    auto Part=[this](USceneComponent* Parent,const TCHAR* Shape,FVector At,FVector Dimensions,int32 Material=0,bool bDetail=false,FRotator Rotation=FRotator::ZeroRotator)
-    {
-        auto Component=NewObject<UStaticMeshComponent>(this);Component->SetupAttachment(Parent);
-        Component->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,*FString::Printf(TEXT("/Engine/BasicShapes/%s.%s"),Shape,Shape)));
-        Component->SetRelativeLocation(At);Component->SetRelativeScale3D(Dimensions/100.0);Component->SetRelativeRotation(Rotation);
-        Component->SetMaterial(0,Materials[Material]);Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        Component->SetGenerateOverlapEvents(false);Component->SetCastShadow(!bDetail);Component->SetCullDistance(bDetail?7000.f:48000.f);
-        Component->RegisterComponent();Parts.Add(Component);if(bDetail)DetailParts.Add(Component);return Component;
-    };
-    VisualRoot->SetWorldScale3D(FVector(Identity.Scale));VisualRoot->SetWorldLocationAndRotation(GetActorLocation(),GetActorQuat());
-    BodyRoot=CitizenJoint(this,VisualRoot,FVector::ZeroVector,Parts);
-    // Human proportions: feet on the path, 88 cm hips, 145 cm shoulders,
-    // approximately 178 cm total height. Uniform and skin remain non-emissive.
-    Part(BodyRoot,TEXT("Sphere"),FVector(-1,0,118),FVector(29,43,58));
-    Part(BodyRoot,TEXT("Sphere"),FVector(-1,0,94),FVector(27,32,28),1);
-    Part(BodyRoot,TEXT("Cube"),FVector(0,0,102),FVector(27,35,5),3,true);
-    Part(BodyRoot,TEXT("Cube"),FVector(14,0,102),FVector(2,6,4),4,true);
-    Part(BodyRoot,TEXT("Cube"),FVector(13,-11,133),FVector(2,8,6),4,true);
-    Part(BodyRoot,TEXT("Sphere"),FVector(0,0,148),FVector(13,14,17),2);
-    HeadPivot=CitizenJoint(this,BodyRoot,FVector(0,0,164),Parts);
-    Part(HeadPivot,TEXT("Sphere"),FVector::ZeroVector,FVector(22,20,27),2);
-    Part(HeadPivot,TEXT("Sphere"),FVector(-3,0,9),FVector(21,21,13),3,true);
-    Part(HeadPivot,TEXT("Sphere"),FVector(10,0,-1),FVector(6,4,8),2,true);
-    for(int32 Side=-1;Side<=1;Side+=2)
-    {
-        Part(HeadPivot,TEXT("Sphere"),FVector(9,Side*5,3),FVector(3,4,2),3,true);
-        Part(HeadPivot,TEXT("Sphere"),FVector(-1,Side*10,-1),FVector(5,4,8),2,true);
-        auto Hip=CitizenJoint(this,BodyRoot,FVector(0,Side*10,89),Parts);Hips.Add(Hip);
-        Part(Hip,TEXT("Sphere"),FVector(0,0,-22),FVector(18,18,46),1);
-        auto Knee=CitizenJoint(this,Hip,FVector(0,0,-43),Parts);Knees.Add(Knee);
-        Part(Knee,TEXT("Sphere"),FVector(0,0,-18),FVector(13,14,39),1);
-        Part(Knee,TEXT("Sphere"),FVector(5,0,-39),FVector(29,15,13),3);
-        auto Shoulder=CitizenJoint(this,BodyRoot,FVector(0,Side*22,139),Parts);Shoulders.Add(Shoulder);
-        Part(Shoulder,TEXT("Sphere"),FVector(0,Side*2,-15),FVector(14,15,36));
-        auto Elbow=CitizenJoint(this,Shoulder,FVector(0,Side*2,-31),Parts);Elbows.Add(Elbow);
-        Part(Elbow,TEXT("Sphere"),FVector(1,0,-12),FVector(11,12,29));
-        Part(Elbow,TEXT("Sphere"),FVector(2,0,-29),FVector(10,10,16),2,true);
-    }
-    if(Identity.Role==1||Identity.Role==5)
-    {
-        Part(BodyRoot,TEXT("Cube"),FVector(-20,0,126),FVector(14,28,39),1,true);
-        Part(BodyRoot,TEXT("Cube"),FVector(13,13,122),FVector(3,4,39),1,true);
-        if(Identity.Role==1)Part(HeadPivot,TEXT("Sphere"),FVector(-1,0,12),FVector(25,25,14),4,true);
-    }
-    if(Identity.Role==4)
-    {
-        Part(BodyRoot,TEXT("Cube"),FVector(11,0,127),FVector(9,32,35),1,true);
-        Part(HeadPivot,TEXT("Sphere"),FVector(-2,0,10),FVector(25,25,20),1,true);
-        Part(HeadPivot,TEXT("Sphere"),FVector(9,0,5),FVector(9,22,11),5,true);
-    }
-    bVisualsBuilt=true;bDetailsVisible=true;InteractionCapsule->SetRelativeScale3D(FVector(Identity.Scale));
-}
-
-void AVoyagerCitizen::Animate(float D)
-{
-    if(!bVisualsBuilt||!BodyRoot)return;
-    const double Time=SynchronizedTime();const float Speed=float(Pose.Velocity.Size());
-    const float Extrapolation=FMath::Clamp(float(Time)-Pose.ServerTime,0.f,.12f);
-    const float Phase=(Pose.GaitDistance+Speed*Extrapolation)*(2.f*PI/145.f);
-    const float Moving=FMath::Clamp(Speed/140.f,0.f,1.f);
-    const float Stride=Pose.bAlarmed?34.f:24.f;
-    const FVector RenderAt=Pose.Location+Pose.Velocity*Extrapolation;
-    if(FVector::DistSquared(VisualRoot->GetComponentLocation(),RenderAt)>FMath::Square(2000.f))VisualRoot->SetWorldLocation(RenderAt);
-    else VisualRoot->SetWorldLocation(FMath::VInterpTo(VisualRoot->GetComponentLocation(),RenderAt,D,15.f));
-    VisualRoot->SetWorldRotation(FQuat::Slerp(VisualRoot->GetComponentQuat(),Pose.Rotation.Quaternion(),1.f-FMath::Exp(-D*13.f)).GetNormalized());
-    BodyRoot->SetRelativeLocation(FVector(0,0,FMath::Abs(FMath::Sin(Phase))*Moving*2.1f+FMath::Sin(float(Time)*1.5f+Identity.Ordinal)*.35f));
-    BodyRoot->SetRelativeRotation(FRotator(Pose.bAlarmed?-5.f:0.f,0,FMath::Sin(Phase)*Moving*1.2f));
-    for(int32 I=0;I<2&&Hips.IsValidIndex(I);++I)
-    {
-        const float Wave=FMath::Sin(Phase+I*PI);
-        Hips[I]->SetRelativeRotation(FRotator(Wave*Stride*Moving,0,0));
-        Knees[I]->SetRelativeRotation(FRotator(FMath::Max(0.f,-Wave)*32.f*Moving,0,0));
-        float Arm=-Wave*Stride*.7f*Moving;
-        float ElbowAngle=Pose.bAlarmed?-45.f:-12.f;
-        if(Pose.Activity==Talk&&I==1){Arm=19.f+FMath::Sin(float(Time)*2.2f)*7.f;ElbowAngle=-48.f;}
-        Shoulders[I]->SetRelativeRotation(FRotator(Arm,0,I==0?-4.f:4.f));
-        Elbows[I]->SetRelativeRotation(FRotator(ElbowAngle,0,0));
-    }
-    HeadPivot->SetRelativeRotation(FRotator(Pose.Activity==Talk?FMath::Sin(float(Time)*2.1f)*3.f:0.f,FMath::Sin(float(Time)*.53f+Identity.Ordinal)*6.f,0));
 }
 
 void AVoyagerCitizen::UpdateSignificance()
@@ -573,9 +457,9 @@ void AVoyagerCitizenManager::UpdateCounts()
     for(auto Citizen:Citizens)
     {
         const int32 Index=Citizen->PlanetIndex()*AVoyagerSettlement::SitesPerPlanet+Citizen->SiteIndex();
-        if(CityPopulations.IsValidIndex(Index))++CityPopulations[Index];
+        if(Citizen->IsAlive()&&CityPopulations.IsValidIndex(Index))++CityPopulations[Index];
     }
-    Population=Citizens.Num();ForceNetUpdate();
+    Population=0;for(auto Citizen:Citizens)if(Citizen->IsAlive())++Population;ForceNetUpdate();
 }
 
 bool AVoyagerCitizenManager::SpawnCitizen(int32 Planet,int32 Site)
@@ -583,7 +467,7 @@ bool AVoyagerCitizenManager::SpawnCitizen(int32 Planet,int32 Site)
     if(Citizens.Num()>=MaximumPopulation)return false;
     TSet<int32> Ordinals;
     for(auto Citizen:Citizens)if(IsValid(Citizen)&&Citizen->PlanetIndex()==Planet&&Citizen->SiteIndex()==Site)Ordinals.Add(Citizen->OrdinalIndex());
-    int32 Ordinal=0;while(Ordinals.Contains(Ordinal))++Ordinal;if(Ordinal>=CitizensPerCity)return false;
+    int32 Ordinal=0;while(Ordinals.Contains(Ordinal)||DeadCitizens.Contains((Planet*AVoyagerSettlement::SitesPerPlanet+Site)*CitizensPerCity+Ordinal))++Ordinal;if(Ordinal>=CitizensPerCity)return false;
     FRandomStream Seed(int32(Voyager::Hash(uint32(Voyager::PlanetSeed(ActiveSystem,Planet))^uint32(Site*7717+Ordinal*104729+5371))&0x7fffffff));
     int32 StartNode=Seed.RandRange(1,7)+Seed.RandRange(1,7)*9;
     FVector Position=AVoyagerSettlement::StreetPoint(ActiveSystem,Planet,Site,StartNode%9,StartNode/9,20.f);
@@ -622,7 +506,7 @@ void AVoyagerCitizenManager::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);if(!HasAuthority())return;
     const auto State=GetWorld()->GetGameState<AVoyagerState>();if(!State)return;
-    if(ActiveSystem!=State->SystemSeed){ClearPopulation();ActiveSystem=State->SystemSeed;}
+    if(ActiveSystem!=State->SystemSeed){ClearPopulation();DeadCitizens.Empty();ActiveSystem=State->SystemSeed;}
     if(State->bTransitioning)return;
     TSet<int32> WantedCities;TSet<int32> RetainedCities;
     for(FConstPlayerControllerIterator It=GetWorld()->GetPlayerControllerIterator();It;++It)
@@ -662,4 +546,30 @@ void AVoyagerCitizenManager::Tick(float DeltaSeconds)
 void AVoyagerCitizenManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     if(HasAuthority())ClearPopulation();Super::EndPlay(EndPlayReason);
+}
+
+void AVoyagerCitizen::OnRep_Health()
+{
+    if(!IsAlive())InteractionCapsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+float AVoyagerCitizen::TakeDamage(float Damage,const FDamageEvent& Event,AController* DamageInstigator,AActor* Causer)
+{
+    if(!HasAuthority()||!IsAlive()||!FMath::IsFinite(Damage)||Damage<=0)return 0.f;
+    if(auto State=GetWorld()->GetGameState<AVoyagerState>())if(State->bTransitioning)return 0.f;
+    const float Applied=FMath::Min(Health,Damage);Health-=Applied;
+    ConversationPartner.Reset();ConversationUntil=0;
+    if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->ReportCrime(DamageInstigator,GetActorLocation(),IsAlive()?20:100,IsAlive()?TEXT("assault on resident"):TEXT("resident killed"));
+    if(IsAlive())NotifyDisturbance(Causer?Causer->GetActorLocation():GetActorLocation());
+    else
+    {
+        DeathTime=float(SynchronizedTime());Pose.Velocity=FVector::ZeroVector;Pose.bAlarmed=false;Route.Empty();Pose.ServerTime=DeathTime;
+        OnRep_Health();SetLifeSpan(90.f);
+        for(TActorIterator<AVoyagerCitizenManager> It(GetWorld());It;++It){It->RecordDeath(this);It->ReportDisturbance(GetActorLocation());}
+    }
+    ForceNetUpdate();return Applied;
+}
+void AVoyagerCitizenManager::RecordDeath(const AVoyagerCitizen* Citizen)
+{
+    if(HasAuthority()&&Citizen&&Citizen->SystemIndex()==ActiveSystem)
+        DeadCitizens.Add((Citizen->PlanetIndex()*AVoyagerSettlement::SitesPerPlanet+Citizen->SiteIndex())*CitizensPerCity+Citizen->OrdinalIndex());
 }

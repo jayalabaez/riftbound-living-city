@@ -34,6 +34,11 @@ public:
     UPROPERTY(Replicated) int32 Discoveries=0;
     UPROPERTY(Replicated) int32 PirateKills=0;
     UPROPERTY(Replicated) int32 Upgrades=0;
+    UPROPERTY(Replicated) int32 WantedStars=0;
+    UPROPERTY(Replicated) bool bLawSearching=false;
+    UPROPERTY(Replicated) float WantedSearchSeconds=0;
+    float CrimeHeat=0,LastLawContact=0,NextLawDispatch=0;
+    FVector LastKnownPosition=FVector::ZeroVector;
     UPROPERTY() TArray<int64> Visited;
     void AddMinerals(int32 Amount);
     bool DiscoverPlanet(int32 System,int32 Planet);
@@ -74,6 +79,7 @@ public:
     void WarpToPlanet(AController* Pilot,int32 Planet);
     void NextSystem(AController* Pilot);
     void RecoverShip(AVoyagerShip* Ship);
+    void RecoverExplorer(AVoyagerCharacter* Explorer);
     void SaveExpedition();
     void UpgradeShip(AController* Pilot);
     AVoyagerShip* ShipFor(AController* Pilot);

@@ -1,4 +1,5 @@
 #include "VoyagerHUD.h"
+#include "VoyagerLaw.h"
 #include "VoyagerCharacter.h"
 #include "VoyagerGameMode.h"
 #include "VoyagerShip.h"
@@ -82,7 +83,7 @@ void AVoyagerHUD::DrawHUD()
         }
         CityPopulation=0;InsideBuilding=INDEX_NONE;ClosestBuilding=INDEX_NONE;InteriorName.Empty();
         for(TActorIterator<AVoyagerCitizen> It(GetWorld());It;++It)
-            if(It->PlanetIndex()==NearestPlanet&&It->SiteIndex()==NearbySite)++CityPopulation;
+            if(It->IsAlive()&&It->PlanetIndex()==NearestPlanet&&It->SiteIndex()==NearbySite)++CityPopulation;
         if(Explorer&&CityDistance<FMath::Square(50000.0))
         {
             InsideBuilding=AVoyagerSettlement::FindBuildingAt(State->SystemSeed,NearestPlanet,NearbySite,Position);
@@ -148,6 +149,34 @@ void AVoyagerHUD::DrawHUD()
     Text(TEXT("DISCOVERIES"), Right + 158, 102, .48f, Muted);
     Text(TEXT("ESC  FLIGHT MANUAL     F5  SAVE"), Right + 3, 142, .53f, Muted);
 
+    if(Expedition&&Expedition->WantedStars>0)
+    {
+        const float X=VW*.5f-145.f;
+        Panel(X,22,290,103);
+        for(int32 Star=0;Star<5;++Star)
+        {
+            const float SX=X+40+Star*52;
+            const FLinearColor Color=Star<Expedition->WantedStars?(Expedition->bLawSearching?Amber:Red):Track;
+            for(int32 Point=0;Point<10;++Point)
+            {
+                const float A=-PI*.5f+Point*PI*.2f,B=A+PI*.2f;
+                const float R=Point%2?6.f:14.f,R2=Point%2?14.f:6.f;
+                Stroke(SX+FMath::Cos(A)*R,49+FMath::Sin(A)*R,SX+FMath::Cos(B)*R2,49+FMath::Sin(B)*R2,Color,2.f);
+            }
+        }
+        Center(Expedition->bLawSearching?TEXT("SEARCHING LAST KNOWN POSITION"):TEXT("WANTED / PATROL PURSUIT"),VW*.5f,74,.53f,Expedition->bLawSearching?Amber:Red,270);
+        Center(Expedition->bLawSearching?FString::Printf(TEXT("Stay out of sight  /  %.0f s"),Expedition->WantedSearchSeconds):TEXT("Break line of sight or escape in your ship"),VW*.5f,98,.44f,Muted,270);
+        for(TActorIterator<AVoyagerPatrolShip> It(GetWorld());It;++It)
+        {
+            FVector2D Screen;
+            if(It->Hull>0&&It->Suspect==Expedition&&FVector::DistSquared(Position,It->GetActorLocation())<FMath::Square(200000.f)&&PC->ProjectWorldLocationToScreen(It->GetActorLocation(),Screen,true))
+            {
+                const float PX=Screen.X/S,PY=Screen.Y/S;
+                if(PX>20&&PX<VW-20&&PY>140&&PY<VH-180)
+                {Stroke(PX-12,PY-10,PX+12,PY-10,Red,2);Stroke(PX-12,PY+10,PX+12,PY+10,Red,2);Center(TEXT("PATROL"),PX,PY+16,.43f,Red);}
+            }
+        }
+    }
     int32 NearbyPirates = 0;
     if (Pawn)
     {
@@ -194,8 +223,8 @@ void AVoyagerHUD::DrawHUD()
         Bar(49, VH - 63, 256, Explorer->Health / 100.f, Explorer->Health < 30 ? Amber : Mint);
 
         Panel(VW - 322, VH - 155, 290, 109);
-        Text(TEXT("TERRAIN MULTITOOL"), VW - 305, VH - 140, .57f, Muted);
-        Text(TEXT("LMB  EXTRACT"), VW - 305, VH - 111, .82f, White);
+        Text(Explorer->bWeaponMode?TEXT("PULSE SIDEARM"):TEXT("TERRAIN MULTITOOL"), VW - 305, VH - 140, .57f, Muted);
+        Text(Explorer->bWeaponMode?TEXT("LMB  FIRE / V  HOLSTER"):TEXT("LMB EXTRACT / V ARM"), VW - 305, VH - 111, .82f, White);
         Text(TEXT("F  SCAN & DISCOVER"), VW - 305, VH - 76, .63f, Mint);
 
         Action = TEXT("EXPLORE  /  SCAN  /  COLLECT");

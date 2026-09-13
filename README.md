@@ -20,7 +20,9 @@ Residents can use an installed local Ollama `llama3.2:3b` model for short conver
 
 On foot: **WASD** move, **Shift** sprint, **Space** jump. In flight: **Space** rises, **Left Ctrl** descends; **E** below **10 m** lands and disembarks. **F5** saves; **Escape** opens the menu.
 
-Follow the settlement marker to the first city, about **320 m** from the landing site. All **60 ground floors** have open entrances and furnished rooms, with stairs to galleries in selected buildings. Residents commute, work, visit cafes and react to nearby weapon fire. Look toward someone nearby and press **E** to talk; **1–3** choose topics and **Backspace** ends the conversation. Watch animals graze outside the city. Each biome has its own city palette and animal species.
+Follow the settlement marker to the first city, about **320 m** from the landing site. All **60 buildings** have furnished occupied floors, glazed windows, open doors, and connected stairs to every level and the roof. Residents use clothed skeletal character meshes and animated walks, commute, work, visit cafes and react to nearby weapon fire. Look toward someone nearby and press **E** to talk; **1–3** choose topics and **Backspace** ends the conversation. Watch animals graze outside the city. Each biome has its own city palette and animal species.
+
+**V** switches the extraction tool to a pulse sidearm; **left mouse** fires. Attacking residents or patrols raises a **one-to-five-star wanted level**. Patrol ships respond, pursue visible suspects and search the last observed position when sight is lost. Hide behind opaque building walls or escape in your ship until the search ends. See [character credits](Art/Characters/PROVENANCE.md) and [ship sources](Art/Ships/PROVENANCE.md).
 
 These original worlds have **600–900 km radii**, with radial gravity and procedural terrain. Ascent, atmospheric entry, and interplanetary cruise happen in the same world without a loading transition. Travel to another star system still uses a short jump transition.
 

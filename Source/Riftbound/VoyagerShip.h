@@ -1,5 +1,6 @@
 #pragma once
 #include "CoreMinimal.h"
+#include "VoyagerShipVisuals.h"
 #include "GameFramework/Pawn.h"
 #include "VoyagerShip.generated.h"
 
@@ -95,6 +96,7 @@ public:
     UFUNCTION(Client,Unreliable) void ConfirmHit();
 private:
     UPROPERTY(VisibleAnywhere) TObjectPtr<USphereComponent> Collision;
+    VoyagerShipVisuals::FAssembly ShipVisuals;
     UPROPERTY() TObjectPtr<USceneComponent> VisualRoot;
     UPROPERTY() TObjectPtr<USpringArmComponent> SpringArm;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Engines;
@@ -153,6 +155,7 @@ public:
     UFUNCTION(NetMulticast,Reliable) void DeathEffect();
 private:
     UPROPERTY() TObjectPtr<USphereComponent> Collision;
+    VoyagerShipVisuals::FAssembly ShipVisuals;
     UPROPERTY() TObjectPtr<USceneComponent> VisualRoot;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Beam;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Engine;

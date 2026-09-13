@@ -18,6 +18,10 @@ public:
     virtual FVector GetPawnViewLocation() const override;
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    virtual float TakeDamage(float Damage,const FDamageEvent& Event,AController* DamageInstigator,AActor* Causer) override;
+    UPROPERTY(Replicated) bool bWeaponMode=false;
+    void ToggleWeapon();
+    UFUNCTION(Server,Reliable) void ServerToggleWeapon();
     UPROPERTY(VisibleAnywhere) TObjectPtr<UCameraComponent> Camera;
     UPROPERTY(Replicated) float Health=100;
     float ScanPulse=0;

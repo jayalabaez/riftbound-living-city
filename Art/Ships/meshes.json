@@ -1,0 +1,350 @@
+{
+  "SM_KestrelHull": {
+    "path": "/Game/Ships/Meshes/SM_KestrelHull",
+    "slots": [
+      "HullPaint",
+      "DarkPanels",
+      "BrushedMetal",
+      "Livery",
+      "Interior",
+      "Instrument",
+      "Thruster"
+    ],
+    "lods": [
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelHull_LOD0.obj",
+        "triangles": 6868,
+        "vertices": 6622,
+        "bounds_cm": [
+          [
+            -365,
+            368
+          ],
+          [
+            -392,
+            392
+          ],
+          [
+            -76.0,
+            232.4808186957677
+          ]
+        ],
+        "sha256": "ce1c348cc15534a6c291b088060fd8552b7e8bf6916316813f388404f1c3a3b4"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelHull_LOD1.obj",
+        "triangles": 4676,
+        "vertices": 4782,
+        "bounds_cm": [
+          [
+            -365,
+            368
+          ],
+          [
+            -392,
+            392
+          ],
+          [
+            -76.0,
+            232.4808186957677
+          ]
+        ],
+        "sha256": "5907bd2f8b4658ecc0362f258379cdf8bc7d64a877fbdefbebcd6fc3b7d896c8"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelHull_LOD2.obj",
+        "triangles": 2800,
+        "vertices": 3228,
+        "bounds_cm": [
+          [
+            -365,
+            368
+          ],
+          [
+            -392,
+            392
+          ],
+          [
+            -76.0,
+            232.4808186957677
+          ]
+        ],
+        "sha256": "c45bb3706e180c20d7760b90fbc11e2195031ee9c9b9757423df7d91109bd30d"
+      }
+    ]
+  },
+  "SM_KestrelCanopy": {
+    "path": "/Game/Ships/Meshes/SM_KestrelCanopy",
+    "slots": [
+      "CanopyGlass"
+    ],
+    "lods": [
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelCanopy_LOD0.obj",
+        "triangles": 160,
+        "vertices": 105,
+        "bounds_cm": [
+          [
+            -53,
+            203
+          ],
+          [
+            -72.0,
+            72.0
+          ],
+          [
+            39.0,
+            155.0
+          ]
+        ],
+        "sha256": "021645ee31332886cfbac41b1871a75e4cfb2f2a47aeae2f821bb3e71de3e5a7"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelCanopy_LOD1.obj",
+        "triangles": 96,
+        "vertices": 65,
+        "bounds_cm": [
+          [
+            -53,
+            203
+          ],
+          [
+            -72.0,
+            72.0
+          ],
+          [
+            39.0,
+            155.0
+          ]
+        ],
+        "sha256": "225c5bea8f3f8c389471b05b21a75595e61f2c6a910264d6b98003b4114b01d2"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelCanopy_LOD2.obj",
+        "triangles": 48,
+        "vertices": 35,
+        "bounds_cm": [
+          [
+            -53,
+            203
+          ],
+          [
+            -72.0,
+            72.0
+          ],
+          [
+            39.0,
+            155.0
+          ]
+        ],
+        "sha256": "cfe02485f78335f9e3590e4b732c9fca50c0849977a5b44a326d19acb8bbd0b6"
+      }
+    ]
+  },
+  "SM_KestrelGear": {
+    "path": "/Game/Ships/Meshes/SM_KestrelGear",
+    "slots": [
+      "BrushedMetal",
+      "DarkPanels",
+      "HullPaint"
+    ],
+    "lods": [
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelGear_LOD0.obj",
+        "triangles": 828,
+        "vertices": 1230,
+        "bounds_cm": [
+          [
+            -233.0,
+            211.22965449176314
+          ],
+          [
+            -143.0,
+            143.0
+          ],
+          [
+            -152.5,
+            -41.57952933501789
+          ]
+        ],
+        "sha256": "736cacf84705aa6d27354360a0bce794c3554fcba451d7155ce5029dcc0543bd"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelGear_LOD1.obj",
+        "triangles": 684,
+        "vertices": 1086,
+        "bounds_cm": [
+          [
+            -233.0,
+            211.22965449176314
+          ],
+          [
+            -143.0,
+            143.0
+          ],
+          [
+            -152.5,
+            -41.57952933501789
+          ]
+        ],
+        "sha256": "c0b83da28a02a7f9b54b150f89a2f4709c5b4754394b09033ce42261b3923840"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelGear_LOD2.obj",
+        "triangles": 612,
+        "vertices": 1014,
+        "bounds_cm": [
+          [
+            -233.0,
+            211.22965449176314
+          ],
+          [
+            -143.0,
+            143.0
+          ],
+          [
+            -152.5,
+            -41.57952933501789
+          ]
+        ],
+        "sha256": "570460a2d97bffd9dd0bb6740652129c0589ab1c36ca1969d5df9496f9508b6b"
+      }
+    ]
+  },
+  "SM_KestrelExhaust": {
+    "path": "/Game/Ships/Meshes/SM_KestrelExhaust",
+    "slots": [
+      "Thruster"
+    ],
+    "lods": [
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelExhaust_LOD0.obj",
+        "triangles": 236,
+        "vertices": 173,
+        "bounds_cm": [
+          [
+            -102,
+            -2
+          ],
+          [
+            -22.0,
+            22.0
+          ],
+          [
+            -21.0,
+            21.0
+          ]
+        ],
+        "sha256": "c83c9e2ea4a3540cfd25795b46f702424545d6fe12493a6c224607a4ba209c42"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelExhaust_LOD1.obj",
+        "triangles": 156,
+        "vertices": 117,
+        "bounds_cm": [
+          [
+            -102,
+            -2
+          ],
+          [
+            -22.0,
+            22.0
+          ],
+          [
+            -21.0,
+            21.0
+          ]
+        ],
+        "sha256": "85715ddfe4c1e837cd769f7c642f17f9ba0c0396db0a5cb5c096963470332c3e"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelExhaust_LOD2.obj",
+        "triangles": 76,
+        "vertices": 61,
+        "bounds_cm": [
+          [
+            -102,
+            -2
+          ],
+          [
+            -22.0,
+            22.0
+          ],
+          [
+            -21.0,
+            21.0
+          ]
+        ],
+        "sha256": "185ffba3d26bb56af88486f32eeaf9db703a7fbdfa656b03dc6eda7d2319bc79"
+      }
+    ]
+  },
+  "SM_KestrelBeacon": {
+    "path": "/Game/Ships/Meshes/SM_KestrelBeacon",
+    "slots": [
+      "Beacon"
+    ],
+    "lods": [
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelBeacon_LOD0.obj",
+        "triangles": 60,
+        "vertices": 112,
+        "bounds_cm": [
+          [
+            -11.0,
+            11.0
+          ],
+          [
+            -6.0,
+            6.0
+          ],
+          [
+            -4.0,
+            4.0
+          ]
+        ],
+        "sha256": "85f0fa8d4096a684e032211d95ee7248b057c05e13faf9f04712bc4f299a83bc"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelBeacon_LOD1.obj",
+        "triangles": 60,
+        "vertices": 112,
+        "bounds_cm": [
+          [
+            -11.0,
+            11.0
+          ],
+          [
+            -6.0,
+            6.0
+          ],
+          [
+            -4.0,
+            4.0
+          ]
+        ],
+        "sha256": "85f0fa8d4096a684e032211d95ee7248b057c05e13faf9f04712bc4f299a83bc"
+      },
+      {
+        "file": "Art/Ships/Meshes/SM_KestrelBeacon_LOD2.obj",
+        "triangles": 60,
+        "vertices": 112,
+        "bounds_cm": [
+          [
+            -11.0,
+            11.0
+          ],
+          [
+            -6.0,
+            6.0
+          ],
+          [
+            -4.0,
+            4.0
+          ]
+        ],
+        "sha256": "85f0fa8d4096a684e032211d95ee7248b057c05e13faf9f04712bc4f299a83bc"
+      }
+    ]
+  }
+}

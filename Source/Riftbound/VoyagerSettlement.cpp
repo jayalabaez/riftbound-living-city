@@ -27,6 +27,7 @@ namespace
     constexpr double RoomHeight = 480.0;
     constexpr double DoorWidth = 420.0;
     constexpr double DoorHeight = 340.0;
+    constexpr double StairRun = 540.0, StairLanding = 200.0;
 
     FString BuildingName(int32 Index)
     {
@@ -86,6 +87,11 @@ namespace
         double X, Y, Width, Depth, Height;
         int32 Style, Column, Row;
     };
+    int32 Storeys(const FBuilding& B) { return FMath::Clamp(FMath::CeilToInt(B.Height / RoomHeight),3,18); }
+    double StairMinX(const FBuilding& B) { return B.Width * .5 - 600; }
+    double StairMaxX(const FBuilding& B) { return B.Width * .5 - 60; }
+    double StairStartY(const FBuilding& B) { return -B.Depth * .5 + 260; }
+    double StairEndY(const FBuilding& B) { return StairStartY(B) + StairRun + StairLanding; }
     TArray<FBuilding> BuildingPlan(int32 System, int32 Planet, int32 Site)
     {
         TArray<FBuilding> Result;
@@ -171,7 +177,7 @@ namespace
             {
                 Material = UMaterialInstanceDynamic::Create(Base,Owner);
                 Material->SetVectorParameterValue(TEXT("Tint"),Tint);
-                Material->SetScalarParameterValue(TEXT("WindowGlow"),.42f);
+                Material->SetScalarParameterValue(TEXT("WindowGlow"),0.f);
             }
         if (!Material) Material = RiftVisual::Material(Owner,Tint,bGlow);
         Mesh->SetMaterial(0,Material);
@@ -273,10 +279,30 @@ bool AVoyagerSettlement::GetBuildingInfo(int32 System, int32 Planet, int32 Site,
     Out.Floor = Base.Floor(); Out.Up = Base.Up; Out.Rotation = Base.Rotation;
     Out.Forward = Base.Rotation.GetAxisX(); Out.Right = Base.Rotation.GetAxisY();
     Out.Width = B.Width; Out.Depth = B.Depth;
+    Out.FloorCount = Storeys(B); Out.FloorHeight = RoomHeight; Out.Height = Out.FloorCount * RoomHeight;
     Out.DoorOutside = Frame.Ground(B.X,(B.Row - 4) * PlotSpacing,20);
     Out.DoorThreshold = Out.Floor - Out.Right * (B.Depth * .5 + 225) + Out.Up * 2;
     Out.DoorInside = Out.Floor - Out.Right * (B.Depth * .5 - 180) + Out.Up * 2;
     Out.InteriorPoint = Out.Floor + Out.Up * 2;
+    return true;
+}
+bool AVoyagerSettlement::GetFloorLanding(int32 System,int32 Planet,int32 Site,int32 Index,int32 FloorIndex,FVector& Out)
+{
+    FVoyagerBuildingInfo B;
+    if(!GetBuildingInfo(System,Planet,Site,Index,B)||FloorIndex<0||FloorIndex>B.FloorCount)return false;
+    Out=B.Floor+B.Forward*(B.Width*.5-200)+B.Right*(-B.Depth*.5+140)+B.Up*(FloorIndex*RoomHeight+2);
+    return true;
+}
+bool AVoyagerSettlement::GetStairRoute(int32 System,int32 Planet,int32 Site,int32 Index,int32 LowerFloor,TArray<FVector>& Out)
+{
+    Out.Reset(); FVoyagerBuildingInfo B;
+    if(!GetBuildingInfo(System,Planet,Site,Index,B)||LowerFloor<0||LowerFloor>=B.FloorCount)return false;
+    const double A=B.Width*.5-480,C=B.Width*.5-200,Y=-B.Depth*.5+260,Z=LowerFloor*RoomHeight;
+    auto Point=[&](double X,double LY,double LZ){return B.Floor+B.Forward*X+B.Right*LY+B.Up*(LZ+2);};
+    Out.Add(Point(A,Y-120,Z));
+    Out.Add(Point(A,Y+StairRun+100,Z+RoomHeight*.5));
+    Out.Add(Point(C,Y+StairRun+100,Z+RoomHeight*.5));
+    Out.Add(Point(C,Y-120,Z+RoomHeight));
     return true;
 }
 FVector AVoyagerSettlement::StreetPoint(int32 System, int32 Planet, int32 Site, int32 GridX, int32 GridY, double Clearance)
@@ -299,7 +325,7 @@ int32 AVoyagerSettlement::FindBuildingAt(int32 System, int32 Planet, int32 Site,
         const FBuildingBase Base = Foundation(Frame,B);
         const FVector Local = Base.Rotation.UnrotateVector(Position - Base.Floor());
         return FMath::Abs(Local.X) < B.Width * .5 - 20 && FMath::Abs(Local.Y) < B.Depth * .5 - 20 &&
-            Local.Z > -20 && Local.Z < RoomHeight ? Index : INDEX_NONE;
+            Local.Z > -20 && Local.Z < Storeys(B)*RoomHeight ? Index : INDEX_NONE;
     }
     return INDEX_NONE;
 }
@@ -348,7 +374,7 @@ void AVoyagerSettlement::UpdateInteriorLights()
 {
     // Shared pools allow at most twelve active lights across every city: eight
     // interior lights and four street lamps following the local players.
-    struct FLightCandidate { int32 Key, Building; double Distance; };
+    struct FLightCandidate { int32 Key, Building; double Distance; int32 Floor=0; };
     TArray<FLightCandidate> Candidates;
     TArray<FLightCandidate> StreetCandidates;
     TArray<FVector> Views;
@@ -368,9 +394,15 @@ void AVoyagerSettlement::UpdateInteriorLights()
         if (Pair.Value.InteriorLights.IsEmpty()) continue;
         for (int32 Index = 0; Index < Pair.Value.BuildingInfo.Num(); ++Index)
         {
-            double Distance = TNumericLimits<double>::Max();
-            for (FVector View : Views) Distance = FMath::Min(Distance,FVector::DistSquared(View,Pair.Value.BuildingInfo[Index].InteriorPoint));
-            if (Distance < FMath::Square(10000.0)) Candidates.Add({Pair.Key,Index,Distance});
+            const auto& B=Pair.Value.BuildingInfo[Index];
+            TSet<int32> SeenFloors;
+            for(FVector View:Views)
+            {
+                const int32 Level=FMath::Clamp(FMath::FloorToInt(FVector::DotProduct(View-B.Floor,B.Up)/RoomHeight),0,B.FloorCount-1);
+                if(SeenFloors.Contains(Level))continue;SeenFloors.Add(Level);
+                const double Distance=FVector::DistSquared(View,B.InteriorPoint+B.Up*(Level*RoomHeight));
+                if(Distance<FMath::Square(10000.0))Candidates.Add({Pair.Key,Index,Distance,Level});
+            }
         }
     }
     Candidates.Sort([](const FLightCandidate& A,const FLightCandidate& B) { return A.Distance < B.Distance; });
@@ -383,7 +415,7 @@ void AVoyagerSettlement::UpdateInteriorLights()
         if (!City.InteriorLights.IsValidIndex(LightIndex)) continue;
         UPointLightComponent* Light = City.InteriorLights[LightIndex++];
         const FVoyagerBuildingInfo& Building = City.BuildingInfo[Candidate.Building];
-        Light->SetWorldLocation(Building.Floor + Building.Up * 350);
+        Light->SetWorldLocation(Building.Floor + Building.Up * (350+Candidate.Floor*RoomHeight));
         Light->SetLightColor(Building.Role == 1 ? FLinearColor(.78f,.88f,1.f) : FLinearColor(1.f,.78f,.53f));
         Light->SetVisibility(true);
     }
@@ -474,7 +506,17 @@ void AVoyagerSettlement::BuildCity(int32 Key)
     auto* Beacons = Instances(this,City,false,Name + TEXT("RoofBeacons"),TEXT("Sphere"),Frame.Origin,Colors.Glow,true);
     auto* InteriorWalls = Instances(this,City,false,Name + TEXT("RoomWalls"),TEXT("Cube"),Frame.Origin,FLinearColor(.70f,.68f,.60f),false,false,true,0);
     auto* Floors = Instances(this,City,false,Name + TEXT("RoomFloors"),TEXT("Cube"),Frame.Origin,FLinearColor(.31f,.32f,.30f),false,false,true,4);
-    auto* WindowFrames = Instances(this,City,false,Name + TEXT("WindowFrames"),TEXT("Cube"),Frame.Origin,FLinearColor(.085f,.11f,.12f),false,false,true,2);
+    auto* WindowFrames = Instances(this,City,false,Name + TEXT("WindowFrames"),TEXT("Cube"),Frame.Origin,FLinearColor(.085f,.11f,.12f),false,false,false,2);
+    auto* Rails = Instances(this,City,false,Name + TEXT("StairRailings"),TEXT("Cube"),Frame.Origin,FLinearColor(.085f,.11f,.12f),false,false,true,2);
+    auto* Glass = Instances(this,City,false,Name + TEXT("WindowGlass"),TEXT("Cube"),Frame.Origin,FLinearColor(.13f,.22f,.24f),false,false,true);
+    Glass->ComponentTags.Add(TEXT("VoyagerGlass"));
+    if(auto* GlassMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_VoyagerGlass.M_VoyagerGlass")))Glass->SetMaterial(0,GlassMaterial);
+    else Glass->SetVisibility(false); // Keep the aperture clear if appearance assets are unavailable.
+    Glass->SetCastShadow(false);Glass->SetCullDistances(18000,26000);
+    auto* StairTreads = Instances(this,City,false,Name + TEXT("StairTreads"),TEXT("Cube"),Frame.Origin,FLinearColor(.34f,.35f,.33f),false,false,false,4);
+    auto* StairCollision = Instances(this,City,false,Name + TEXT("StairSupports"),TEXT("Cube"),Frame.Origin,Colors.Base,false,false,true);
+    StairCollision->SetVisibility(false);StairCollision->SetCastShadow(false);
+    auto* Doors = Instances(this,City,false,Name + TEXT("OpenDoors"),TEXT("Cube"),Frame.Origin,FLinearColor(.24f,.16f,.095f),false,false,true,1);
     const TArray<FBuilding> Plan = BuildingPlan(BuiltSystem,Planet,Site);
     City.Buildings = Plan.Num();
     for (int32 Index = 0; Index < Plan.Num(); ++Index)
@@ -489,34 +531,101 @@ void AVoyagerSettlement::BuildCity(int32 Key)
         const FVector X = F.Rotation.GetAxisX(), Y = F.Rotation.GetAxisY();
         auto Place = [&](UInstancedStaticMeshComponent* Mesh, double LX, double LY, double LZ, FVector Size)
         { Add(Mesh,Floor + X * LX + Y * LY + F.Up * LZ,Size,F.Rotation); };
-        const double Lower = B.Height * .72, UpperHeight = B.Height - Lower;
-        // The visible orbital mass and the walk-in room share one building. No
-        // hidden solid tower intersects the player beneath the first ceiling.
-        Add(B.Style & 1 ? Upper : Hull,Floor + F.Up * (RoomHeight + (Lower - RoomHeight) * .5),
-            FVector(B.Width,B.Depth,Lower - RoomHeight),F.Rotation);
-        Place(Floors,0,0,-3,FVector(B.Width + 448,B.Depth + 448,6));
-        Place(InteriorWalls,0,0,RoomHeight - 10,FVector(B.Width,B.Depth,20));
-        const double Wing = (B.Width - DoorWidth) * .5;
-        for (int32 Side : {-1,1})
+        const int32 FloorCount=Storeys(B);
+        const double BuildingHeight=FloorCount*RoomHeight;
+        const double SX0=StairMinX(B),SX1=StairMaxX(B),SY0=StairStartY(B),SY1=StairEndY(B);
+        auto Segment=[&](UInstancedStaticMeshComponent* Mesh,FVector A,FVector C,double Width,double Thickness)
         {
-            Place(InteriorWalls,Side * (DoorWidth * .5 + Wing * .5),-B.Depth * .5,RoomHeight * .5,FVector(Wing,36,RoomHeight));
-            Place(WindowFrames,Side * (DoorWidth * .5 + 12),-B.Depth * .5 - 4,DoorHeight * .5,FVector(24,56,DoorHeight));
-            // Open daylight windows have real apertures, sills and four mullions.
-            Place(InteriorWalls,Side * B.Width * .5,0,60,FVector(36,B.Depth,120));
-            Place(InteriorWalls,Side * B.Width * .5,0,395,FVector(36,B.Depth,170));
-            Place(WindowFrames,Side * B.Width * .5,0,120,FVector(52,B.Depth,16));
-            Place(WindowFrames,Side * B.Width * .5,0,310,FVector(52,B.Depth,16));
-            for (int32 Post = 0; Post < 4; ++Post)
-                Place(WindowFrames,Side * B.Width * .5,(Post - 1.5) * B.Depth / 3,215,FVector(45,65,190));
+            A=Floor+F.Rotation.RotateVector(A);C=Floor+F.Rotation.RotateVector(C);
+            const FQuat Rotation=FRotationMatrix::MakeFromXZ((C-A).GetSafeNormal(),F.Up).ToQuat();
+            Add(Mesh,(A+C)*.5,FVector((C-A).Size(),Width,Thickness),Rotation);
+        };
+        Place(Floors,0,0,-3,FVector(B.Width + 448,B.Depth + 448,6));
+        // Every visible storey is hollow. Four slabs leave the same switchback
+        // opening on each level; the last landing opens onto a guarded roof.
+        for(int32 Level=0;Level<FloorCount;++Level)
+        {
+            const double Z=Level*RoomHeight,Ceiling=(Level+1)*RoomHeight;
+            auto* Slab=Level+1==FloorCount?Roofs:Floors;
+            Place(Slab,(-B.Width*.5+SX0)*.5,0,Ceiling-10,FVector(SX0+B.Width*.5,B.Depth,20));
+            Place(Slab,(SX1+B.Width*.5)*.5,0,Ceiling-10,FVector(B.Width*.5-SX1,B.Depth,20));
+            Place(Slab,(SX0+SX1)*.5,(-B.Depth*.5+SY0)*.5,Ceiling-10,FVector(SX1-SX0,SY0+B.Depth*.5,20));
+            Place(Slab,(SX0+SX1)*.5,(SY1+B.Depth*.5)*.5,Ceiling-10,FVector(SX1-SX0,B.Depth*.5-SY1,20));
+            auto WindowWall=[&](bool AlongX,double Center,double Span,double Fixed)
+            {
+                auto Part=[&](UInstancedStaticMeshComponent* Mesh,double H,FVector Size)
+                {Place(Mesh,AlongX?Center:Fixed,AlongX?Fixed:Center,Z+H,AlongX?Size:FVector(Size.Y,Size.X,Size.Z));};
+                Part(InteriorWalls,60,FVector(Span,36,120));
+                Part(InteriorWalls,395,FVector(Span,36,170));
+                Part(Glass,215,FVector(Span-24,8,186));
+                Part(WindowFrames,120,FVector(Span+10,52,16));
+                Part(WindowFrames,310,FVector(Span+10,52,16));
+                const int32 Bays=FMath::Max(2,FMath::RoundToInt(Span/440));
+                for(int32 Post=0;Post<=Bays;++Post)
+                {
+                    const double Axis=Center-Span*.5+Span*Post/Bays;
+                    Place(WindowFrames,AlongX?Axis:Fixed,AlongX?Fixed:Axis,Z+215,AlongX?FVector(28,48,190):FVector(48,28,190));
+                }
+            };
+            for(int32 Side:{-1,1})WindowWall(false,0,B.Depth,Side*B.Width*.5);
+            WindowWall(true,0,B.Width,B.Depth*.5);
+            if(Level==0)
+            {
+                const double Wing=(B.Width-DoorWidth)*.5;
+                for(int32 Side:{-1,1})
+                {
+                    WindowWall(true,Side*(DoorWidth*.5+Wing*.5),Wing,-B.Depth*.5);
+                    Place(WindowFrames,Side*(DoorWidth*.5+12),-B.Depth*.5-4,DoorHeight*.5,FVector(24,56,DoorHeight));
+                    // Fixed open leaves sit outside the 4.2 m clear doorway. A
+                    // player never waits for a client/server door state to agree.
+                    Place(Doors,Side*(DoorWidth*.5+22),-B.Depth*.5+91,DoorHeight*.5,FVector(12,182,DoorHeight-12));
+                    Place(WindowFrames,Side*(DoorWidth*.5+31),-B.Depth*.5+155,145,FVector(10,35,12));
+                }
+                Place(InteriorWalls,0,-B.Depth*.5,(RoomHeight+DoorHeight)*.5,FVector(DoorWidth,36,RoomHeight-DoorHeight));
+                Place(WindowFrames,0,-B.Depth*.5-4,DoorHeight,FVector(DoorWidth+48,56,24));
+            }
+            else WindowWall(true,0,B.Width,-B.Depth*.5);
+            // Facade belts and projecting pilasters provide depth without
+            // filling the actual rooms with a second opaque building volume.
+            for(int32 Side:{-1,1})
+            {
+                Place(B.Style&1?Upper:Hull,0,Side*(B.Depth*.5+24),Z+RoomHeight-64,FVector(B.Width+90,26,72));
+                Place(B.Style&1?Upper:Hull,Side*(B.Width*.5+24),0,Z+RoomHeight-64,FVector(26,B.Depth+90,72));
+            }
+            for(int32 Corner=0;Corner<4;++Corner)
+                Place(Upper,(Corner&1?1:-1)*(B.Width*.5+10),(Corner&2?1:-1)*(B.Depth*.5+10),Z+RoomHeight*.5,FVector(68,68,RoomHeight));
+            // Twelve physical-looking treads per flight share a continuous
+            // static ramp collider. Ordinary walking is smooth and network
+            // bases stay deterministic while physics bodies remain bounded.
+            const double AX=SX0+120,BX=SX0+400;
+            for(int32 Step=0;Step<12;++Step)
+            {
+                const double Rise=(Step+1)*20;
+                Place(StairTreads,AX,SY0+(Step+.5)*45,Z+Rise-10,FVector(220,45,20));
+                Place(StairTreads,BX,SY0+StairRun-(Step+.5)*45,Z+RoomHeight*.5+Rise-10,FVector(220,45,20));
+                if(Step%3==1)
+                {
+                    Place(WindowFrames,AX-110,SY0+(Step+.5)*45,Z+Rise+49,FVector(8,8,98));
+                    Place(WindowFrames,BX+110,SY0+StairRun-(Step+.5)*45,Z+RoomHeight*.5+Rise+49,FVector(8,8,98));
+                }
+            }
+            auto Ramp=[&](FVector A,FVector C)
+            {
+                const FVector AW=Floor+F.Rotation.RotateVector(A),CW=Floor+F.Rotation.RotateVector(C);
+                const FQuat R=FRotationMatrix::MakeFromXZ((CW-AW).GetSafeNormal(),F.Up).ToQuat();
+                Add(StairCollision,(AW+CW)*.5-R.GetAxisZ()*10,FVector((CW-AW).Size()+4,220,20),R);
+            };
+            Ramp(FVector(AX,SY0-20,Z),FVector(AX,SY0+StairRun,Z+RoomHeight*.5));
+            Ramp(FVector(BX,SY0+StairRun+20,Z+RoomHeight*.5),FVector(BX,SY0,Z+RoomHeight));
+            Place(Floors,(SX0+SX1)*.5,SY0+StairRun+StairLanding*.5,Z+RoomHeight*.5-10,FVector(SX1-SX0,StairLanding,20));
+            Segment(Rails,FVector(AX-110,SY0,Z+110),FVector(AX-110,SY0+StairRun,Z+RoomHeight*.5+110),8,8);
+            Segment(Rails,FVector(BX+110,SY0+StairRun,Z+RoomHeight*.5+110),FVector(BX+110,SY0,Z+RoomHeight+110),8,8);
+            // Level-edge guards leave the front landing and both stair mouths open.
+            Place(Rails,SX0,(SY0+SY1)*.5,Ceiling+105,FVector(12,SY1-SY0,12));
+            Place(Rails,(SX0+SX1)*.5,SY1,Ceiling+105,FVector(SX1-SX0,12,12));
+            for(int32 Post=0;Post<5;++Post)
+                Place(WindowFrames,SX0,SY0+Post*(SY1-SY0)/4,Ceiling+50,FVector(10,10,100));
         }
-        Place(InteriorWalls,0,-B.Depth * .5,(RoomHeight + DoorHeight) * .5,FVector(DoorWidth,36,RoomHeight - DoorHeight));
-        Place(WindowFrames,0,-B.Depth * .5 - 4,DoorHeight,FVector(DoorWidth + 48,56,24));
-        Place(InteriorWalls,0,B.Depth * .5,60,FVector(B.Width,36,120));
-        Place(InteriorWalls,0,B.Depth * .5,395,FVector(B.Width,36,170));
-        Place(WindowFrames,0,B.Depth * .5,120,FVector(B.Width,52,16));
-        Place(WindowFrames,0,B.Depth * .5,310,FVector(B.Width,52,16));
-        for (int32 Post = 0; Post < 4; ++Post)
-            Place(WindowFrames,(Post - 1.5) * B.Width / 3,B.Depth * .5,215,FVector(65,45,190));
         const FVector RampDirection = Info.DoorThreshold - Info.DoorOutside;
         const FQuat RampRotation = FRotationMatrix::MakeFromXZ(RampDirection.GetSafeNormal(),F.Up).ToQuat();
         Add(Floors,(Info.DoorThreshold + Info.DoorOutside) * .5 - RampRotation.GetAxisZ() * 10,
@@ -534,19 +643,20 @@ void AVoyagerSettlement::BuildCity(int32 Key)
                 const double Height = (Step + 1) * 20;
                 Place(Floors,StairX,StartY + (Step + .5) * 40,Height * .5,FVector(200,40,Height));
             }
-            Place(WindowFrames,-100,B.Depth * .5 - 409,340,FVector(B.Width - 400,18,18));
+            Place(Rails,-100,B.Depth * .5 - 409,340,FVector(B.Width - 400,18,18));
             for (int32 Post = 0; Post < 6; ++Post)
                 Place(WindowFrames,-B.Width * .5 + 100 + Post * (B.Width - 500) / 5,B.Depth * .5 - 409,290,FVector(16,16,100));
         }
-        Add(B.Style & 1 ? Hull : Upper,Floor + F.Up * (Lower + UpperHeight * .5),
-            FVector(B.Width * .73,B.Depth * .78,UpperHeight),F.Rotation);
-        Add(Roofs,Floor + F.Up * (Lower + 36),FVector(B.Width + 110,B.Depth + 110,72),F.Rotation);
-        Add(Roofs,Floor + F.Up * (B.Height + 30),FVector(B.Width * .78,B.Depth * .83,60),F.Rotation);
+        for(int32 Side:{-1,1})
+        {
+            Place(Roofs,Side*B.Width*.5,0,BuildingHeight+55,FVector(35,B.Depth+35,110));
+            Place(Roofs,0,Side*B.Depth*.5,BuildingHeight+55,FVector(B.Width+35,35,110));
+        }
         if (B.Height > 4000)
         {
             const double AntennaHeight = B.Style == 0 ? 1100 : 650;
-            Add(Silhouette,Floor + F.Up * (B.Height + AntennaHeight * .5),FVector(95,95,AntennaHeight),F.Rotation);
-            Add(Beacons,Floor + F.Up * (B.Height + AntennaHeight),FVector(105,105,105),F.Rotation);
+            Add(Silhouette,Floor + F.Up * (BuildingHeight + AntennaHeight * .5),FVector(95,95,AntennaHeight),F.Rotation);
+            Add(Beacons,Floor + F.Up * (BuildingHeight + AntennaHeight),FVector(105,105,105),F.Rotation);
         }
     }
     // Roads follow sampled radial ground; no giant flat foundation hides the planet.
@@ -581,7 +691,6 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
     const FCityFrame Frame = CityFrame(BuiltSystem,Planet,Site);
     const FCityPalette Colors = Palette(Biome);
     const FString Name = FString::Printf(TEXT("SettlementDetail_%d_%d_"),BuiltSystem,Key);
-    auto* WindowBands = Instances(this,City,true,Name + TEXT("WindowBands"),TEXT("Cube"),Frame.Origin,Colors.Glow * .52f,true);
     auto* Frames = Instances(this,City,true,Name + TEXT("FacadeFrames"),TEXT("Cube"),Frame.Origin,Colors.Base);
     auto* Equipment = Instances(this,City,true,Name + TEXT("Equipment"),TEXT("Cube"),Frame.Origin,Colors.Secondary,false,true);
     auto* Pipes = Instances(this,City,true,Name + TEXT("Pipes"),TEXT("Cylinder"),Frame.Origin,Colors.Base);
@@ -604,26 +713,16 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
         const FBuilding& B = Plan[BuildingIndex];
         const FBuildingBase F = Foundation(Frame,B);
         const FVector Floor = F.Floor(), X = F.Rotation.GetAxisX(), Y = F.Rotation.GetAxisY();
-        const int32 Floors = FMath::Clamp(int32(B.Height / 430),1,18);
-        for (int32 Level = 1; Level < Floors; ++Level)
-        {
-            const double Height = 210 + Level * 430;
-            const bool bUpper = Height > B.Height * .72;
-            const double Width = B.Width * (bUpper ? .73 : 1), Depth = B.Depth * (bUpper ? .78 : 1);
-            const FVector Center = Floor + F.Up * Height;
-            Add(WindowBands,Center + X * (Width * .5 + 3),FVector(9,Depth * .7,28),F.Rotation);
-            Add(WindowBands,Center - X * (Width * .5 + 3),FVector(9,Depth * .7,28),F.Rotation);
-            Add(WindowBands,Center + Y * (Depth * .5 + 3),FVector(Width * .7,9,28),F.Rotation);
-            Add(WindowBands,Center - Y * (Depth * .5 + 3),FVector(Width * .7,9,28),F.Rotation);
-        }
+        const int32 Floors = Storeys(B);
+        const double BuildingHeight=Floors*RoomHeight;
         for (int32 Corner = 0; Corner < 4; ++Corner)
         {
             const FVector Offset = X * (Corner & 1 ? 1 : -1) * (B.Width * .5 + 8) + Y * (Corner & 2 ? 1 : -1) * (B.Depth * .5 + 8);
-            Add(Frames,Floor + Offset + F.Up * B.Height * .36,FVector(55,55,B.Height * .72),F.Rotation);
+            Add(Frames,Floor + Offset + F.Up * BuildingHeight * .5,FVector(55,55,BuildingHeight),F.Rotation);
         }
         // Mechanical rooftop boxes, ducts, landing markers and narrow entrance canopies.
-        Add(Equipment,Floor + F.Up * (B.Height + 170),FVector(B.Width * .31,B.Depth * .26,290),F.Rotation);
-        Add(Pipes,Floor + F.Up * (B.Height + 280) + X * B.Width * .22,FVector(145,145,450),F.Rotation);
+        Add(Equipment,Floor + F.Up * (BuildingHeight + 170),FVector(B.Width * .31,B.Depth * .26,290),F.Rotation);
+        Add(Pipes,Floor + F.Up * (BuildingHeight + 280) - X * B.Width * .22,FVector(145,145,450),F.Rotation);
         Add(Frames,Floor - Y * (B.Depth * .5 + 240) + F.Up * 365,FVector(820,700,36),F.Rotation);
         Add(Equipment,Floor - Y * (B.Depth * .5 + 42) + F.Up * 425,FVector(1200,35,95),F.Rotation);
         Add(LightPanels,Floor - Y * (B.Depth * .5 + 170) + F.Up * 339,FVector(300,35,8),F.Rotation);
@@ -637,8 +736,18 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
             Label(this,City,Name + FString::Printf(TEXT("RoomSign%d"),BuildingIndex),Services[BuildingIndex % 6],
                 Floor + Y * (B.Depth * .5 - 32) + F.Up * 390,TextRotation,42,FColor(55,68,65));
         }
+        auto IntersectsStairClearance=[&](double LX,double LY,FVector Size)
+        {
+            return LX+Size.X*.5>StairMinX(B)-70 && LX-Size.X*.5<StairMaxX(B)+40 &&
+                LY+Size.Y*.5>StairStartY(B)-200 && LY-Size.Y*.5<StairEndY(B)+70;
+        };
         auto Place = [&](UInstancedStaticMeshComponent* Mesh, double LX, double LY, double LZ, FVector Size)
-        { Add(Mesh,Floor + X * LX + Y * LY + F.Up * LZ,Size,F.Rotation); };
+        {
+            // Reserve the whole stairwell and front circulation landing, not
+            // just the two runs. Furnishings never narrow an accessible route.
+            if(LZ-Size.Z*.5<RoomHeight && IntersectsStairClearance(LX,LY,Size))return;
+            Add(Mesh,Floor + X * LX + Y * LY + F.Up * LZ,Size,F.Rotation);
+        };
         auto Chair = [&](double LX,double LY,bool bFaceBack)
         {
             Place(Fabric,LX,LY,48,FVector(64,64,16));
@@ -679,6 +788,10 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
                 for (int32 Side : {-1,1})
                 {
                     const double TableX = Side * SideX * .65, TableY = (Row - 1) * 350;
+                    // Treat table, pedestal, chairs and crockery as one set.
+                    // Clipping the larger pieces individually left chair legs
+                    // standing beside the otherwise clear stairwell.
+                    if(IntersectsStairClearance(TableX,TableY,FVector(190,300,210)))continue;
                     Place(Round,TableX,TableY,78,FVector(135,135,10));
                     Place(Metal,TableX,TableY,38,FVector(12,12,76));
                     Place(Round,TableX,TableY,7,FVector(60,60,10));
@@ -757,12 +870,57 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
         {
             Place(LightPanels,Side * B.Width * .24,0,RoomHeight - 23,FVector(210,B.Depth * .58,6));
             Place(Round,Side * (B.Width * .5 - 125),-B.Depth * .5 + 190,40,FVector(130,130,80));
-            Add(RoofGarden,Floor + X * Side * (B.Width * .5 - 125) - Y * (B.Depth * .5 - 190) + F.Up * 140,
+            if(Side<0)Add(RoofGarden,Floor + X * Side * (B.Width * .5 - 125) - Y * (B.Depth * .5 - 190) + F.Up * 140,
                 FVector(140,120,180),F.Rotation);
         }
         if ((Biome == 0 || Biome == 4) && B.Style == 2)
             for (int32 I = 0; I < 3; ++I)
-                Add(RoofGarden,Floor + F.Up * (B.Height + 130) + X * (I - 1) * 410,FVector(440,420,240),F.Rotation);
+                Add(RoofGarden,Floor + F.Up * (BuildingHeight + 130) + X * (I - 1) * 410+Y*B.Depth*.28,FVector(440,420,240),F.Rotation);
+        // Upper floors are occupied rooms too: real desks, beds, storage and
+        // lounges sit on their physical slabs, with open circulation between.
+        for(int32 Level=1;Level<Floors;++Level)
+        {
+            const double Z=Level*RoomHeight;
+            auto UpperPlace=[&](UInstancedStaticMeshComponent* Mesh,double LX,double LY,double LZ,FVector Size)
+            {Add(Mesh,Floor+X*LX+Y*LY+F.Up*(Z+LZ),Size,F.Rotation);};
+            const int32 RoomRole=BuildingIndex%6;
+            for(int32 Side:{-1,1})
+            {
+                const double LX=Side*B.Width*.26,LY=B.Depth*.24;
+                if(RoomRole==1||RoomRole==4)
+                {
+                    UpperPlace(RoomRole==1?Ceramic:Wood,LX,LY,36,FVector(145,245,28));
+                    UpperPlace(Fabric,LX,LY,60,FVector(138,238,22));
+                    UpperPlace(Ceramic,LX,LY+85,78,FVector(110,50,16));
+                    UpperPlace(Wood,LX+Side*130,LY,44,FVector(80,90,88));
+                }
+                else
+                {
+                    UpperPlace(Wood,LX,LY,83,FVector(280,110,10));
+                    for(int32 Leg:{-1,1})UpperPlace(Metal,LX+Leg*115,LY,38,FVector(18,90,76));
+                    UpperPlace(Metal,LX,LY+22,116,FVector(8,8,55));
+                    UpperPlace(Screen,LX,LY+22,137,FVector(95,8,58));
+                    UpperPlace(Fabric,LX,LY-120,50,FVector(68,68,18));
+                    UpperPlace(Metal,LX,LY-120,24,FVector(45,45,48));
+                    UpperPlace(Fabric,LX,LY-149,85,FVector(68,10,65));
+                }
+            }
+            UpperPlace(Wood,-B.Width*.5+110,0,130,FVector(130,380,260));
+            for(int32 Shelf=0;Shelf<4;++Shelf)
+                UpperPlace(Goods,-B.Width*.5+185,0,40+Shelf*60,FVector(20,340,38));
+            UpperPlace(Fabric,-B.Width*.24,-B.Depth*.23,56,FVector(280,100,40));
+            UpperPlace(Fabric,-B.Width*.24,-B.Depth*.23-48,102,FVector(280,20,100));
+            UpperPlace(Wood,-B.Width*.24,-B.Depth*.23+155,36,FVector(200,95,12));
+            UpperPlace(Metal,-B.Width*.24,-B.Depth*.23+155,16,FVector(150,65,32));
+            UpperPlace(LightPanels,-B.Width*.20,0,RoomHeight-24,FVector(240,B.Depth*.52,6));
+            UpperPlace(LightPanels,(StairMinX(B)+StairMaxX(B))*.5,StairEndY(B)+90,RoomHeight-24,FVector(300,95,6));
+            if(GetNetMode()!=NM_DedicatedServer)
+            {
+                const FQuat Facing=Voyager::TangentRotation(F.Up,Y).Quaternion();
+                Label(this,City,Name+FString::Printf(TEXT("FloorSign%d_%d"),BuildingIndex,Level),
+                    FString::Printf(TEXT("LEVEL %02d  /  STAIRS"),Level+1),Floor+X*(StairMinX(B)+270)+Y*(-B.Depth*.5+28)+F.Up*(Z+220),Facing,32,FColor(226,218,197));
+            }
+        }
     }
     for (int32 XIndex = 0; XIndex <= 8; ++XIndex)
         for (int32 YIndex = 0; YIndex <= 8; ++YIndex)

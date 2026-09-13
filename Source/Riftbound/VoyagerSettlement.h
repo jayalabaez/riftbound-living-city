@@ -19,6 +19,8 @@ struct FVoyagerBuildingInfo
     FVector DoorInside = FVector::ZeroVector, InteriorPoint = FVector::ZeroVector;
     FQuat Rotation = FQuat::Identity;
     double Width = 0, Depth = 0;
+    int32 FloorCount = 1;
+    double FloorHeight = 480, Height = 480;
 };
 
 USTRUCT()
@@ -50,6 +52,10 @@ public:
     static FString SiteName(int32 System, int32 Planet, int32 Site = 0);
     static bool IsWithinSite(int32 System, int32 Planet, FVector UnitDirection, double PaddingCm = 0.0);
     static bool GetBuildingInfo(int32 System, int32 Planet, int32 Site, int32 Index, FVoyagerBuildingInfo& Out);
+    /** FloorIndex==FloorCount is the accessible roof; locations are walkable surface points. */
+    static bool GetFloorLanding(int32 System, int32 Planet, int32 Site, int32 Index, int32 FloorIndex, FVector& Out);
+    /** Ordered walk targets from one level through both flights to the next level. */
+    static bool GetStairRoute(int32 System, int32 Planet, int32 Site, int32 Index, int32 LowerFloor, TArray<FVector>& Out);
     static int32 BuildingCount() { return 60; }
     static FVector StreetPoint(int32 System, int32 Planet, int32 Site, int32 GridX, int32 GridY, double Clearance = 0);
     static int32 FindBuildingAt(int32 System, int32 Planet, int32 Site, FVector Position);

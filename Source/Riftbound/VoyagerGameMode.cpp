@@ -1,4 +1,6 @@
 #include "VoyagerGameMode.h"
+#include "VoyagerLaw.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "VoyagerCharacter.h"
 #include "VoyagerShip.h"
 #include "VoyagerWorld.h"
@@ -16,7 +18,7 @@
 
 namespace
 {
-    bool IsVoyagerTest(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerRealismAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerAITest"))||FParse::Param(FCommandLine::Get(),TEXT("LivingCityIsolationAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityNetAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerLifeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"));}
+    bool IsVoyagerTest(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerCrimeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerBuildingAudit"))|| FParse::Param(FCommandLine::Get(),TEXT("VoyagerRealismAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerAITest"))||FParse::Param(FCommandLine::Get(),TEXT("LivingCityIsolationAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityNetAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerLifeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"));}
     int32 ArrivalPlanet(int32 System,int32 SavedPlanet)
     {
         if(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNatureVisit")))
@@ -37,7 +39,7 @@ void AVoyagerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 }
 void AVoyagerPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
-    Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerPlayerState,Minerals);DOREPLIFETIME(AVoyagerPlayerState,Discoveries);DOREPLIFETIME(AVoyagerPlayerState,PirateKills);DOREPLIFETIME(AVoyagerPlayerState,Upgrades);
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerPlayerState,Minerals);DOREPLIFETIME(AVoyagerPlayerState,Discoveries);DOREPLIFETIME(AVoyagerPlayerState,PirateKills);DOREPLIFETIME(AVoyagerPlayerState,Upgrades);DOREPLIFETIME(AVoyagerPlayerState,WantedStars);DOREPLIFETIME(AVoyagerPlayerState,bLawSearching);DOREPLIFETIME(AVoyagerPlayerState,WantedSearchSeconds);
 }
 void AVoyagerPlayerState::AddMinerals(int32 Amount)
 {
@@ -68,6 +70,7 @@ void AVoyagerGameMode::BeginPlay()
     if(LoadedSave&&State){State->SystemSeed=FMath::Max(1,LoadedSave->SystemSeed);State->PlanetIndex=FMath::Clamp(LoadedSave->PlanetIndex,0,4);}
     if(State)State->PlanetIndex=ArrivalPlanet(State->SystemSeed,State->PlanetIndex);
     WorldBuilder=GetWorld()->SpawnActor<AVoyagerWorld>(FVector::ZeroVector,FRotator::ZeroRotator);
+    GetWorld()->SpawnActor<AVoyagerLaw>();
     UE_LOG(LogTemp,Display,TEXT("VOYAGER READY system=%d planet=%d mode=%d"),State->SystemSeed,State->PlanetIndex,State->Mode);
 }
 void AVoyagerGameMode::PreLogin(const FString& Options,const FString& Address,const FUniqueNetIdRepl& UniqueId,FString& ErrorMessage)
@@ -245,6 +248,7 @@ void AVoyagerGameMode::SpawnPirates()
 void AVoyagerGameMode::RecoverShip(AVoyagerShip* Ship)
 {
     if(!Ship)return;auto State=GetGameState<AVoyagerState>();if(!State)return;
+    if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->Resolve(Ship->GetController(),false);
     const int32 Planet=Voyager::NearestPlanet(State->SystemSeed,Ship->GetActorLocation());
     if(Ship->SurfaceAltitude()>=Voyager::AtmosphereHeight)
     {
@@ -274,4 +278,19 @@ void AVoyagerGameMode::SaveExpedition()
     }
     const bool Saved=UGameplayStatics::SaveGameToSlot(Save,SaveSlot(),0);
     UE_LOG(LogTemp,Display,TEXT("VOYAGER SAVE %s system=%d planet=%d minerals=%d discoveries=%d"),Saved?TEXT("PASS"):TEXT("FAIL"),Save->SystemSeed,Save->PlanetIndex,Save->Minerals,Save->Visited.Num());
+}
+
+void AVoyagerGameMode::RecoverExplorer(AVoyagerCharacter* Explorer)
+{
+    if(!IsValid(Explorer)||!Explorer->GetController())return;
+    auto C=Explorer->GetController();auto State=GetGameState<AVoyagerState>();if(!State)return;
+    if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->Resolve(C,false);
+    const int32 Planet=Voyager::NearestPlanet(State->SystemSeed,Explorer->GetActorLocation());
+    const FVector Up=AVoyagerSettlement::SiteDirection(State->SystemSeed,Planet);
+    Explorer->GetCharacterMovement()->StopMovementImmediately();
+    const FRotator Frame=Voyager::TangentRotation(Up);
+    const FVector Rescue=Voyager::SurfacePoint(State->SystemSeed,Planet,Up,130.f)+Frame.Vector()*900+FRotationMatrix(Frame).GetScaledAxis(EAxis::Y)*450;
+    Explorer->SetActorLocationAndRotation(Rescue,Frame,false,nullptr,ETeleportType::TeleportPhysics);
+    Explorer->Health=100.f;Explorer->ForceNetUpdate();
+    Tell(C,TEXT("RESCUED / Emergency medics restored your suit. Local pursuit ended; cargo preserved."));
 }

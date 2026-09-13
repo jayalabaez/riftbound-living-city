@@ -1,0 +1,80 @@
+[
+  {
+    "variant": "Male",
+    "source": "Art/Characters/Generated/CitizenMale.gltf",
+    "triangles": 29654,
+    "bones": 77,
+    "materials": [
+      "Skin",
+      "Cloth",
+      "Boots",
+      "Hair",
+      "Eyes"
+    ],
+    "animations": {
+      "Idle": 3.0,
+      "Walk": 1.0,
+      "Run": 0.72,
+      "Talk": 3.0,
+      "Death": 1.35
+    },
+    "settings": {
+      "morph": "caucasian-male-young",
+      "skin": "young_caucasian_male/young_lightskinned_male_diffuse.png",
+      "outfit": "male_casualsuit03",
+      "hair": "short01"
+    }
+  },
+  {
+    "variant": "Female",
+    "source": "Art/Characters/Generated/CitizenFemale.gltf",
+    "triangles": 35082,
+    "bones": 77,
+    "materials": [
+      "Skin",
+      "Cloth",
+      "Boots",
+      "Hair",
+      "Eyes"
+    ],
+    "animations": {
+      "Idle": 3.0,
+      "Walk": 1.0,
+      "Run": 0.72,
+      "Talk": 3.0,
+      "Death": 1.35
+    },
+    "settings": {
+      "morph": "african-female-young",
+      "skin": "young_african_female/young_darkskinned_female_diffuse.png",
+      "outfit": "female_casualsuit01",
+      "hair": "bob01"
+    }
+  },
+  {
+    "variant": "Guard",
+    "source": "Art/Characters/Generated/CitizenGuard.gltf",
+    "triangles": 32792,
+    "bones": 77,
+    "materials": [
+      "Skin",
+      "Cloth",
+      "Boots",
+      "Hair",
+      "Eyes"
+    ],
+    "animations": {
+      "Idle": 3.0,
+      "Walk": 1.0,
+      "Run": 0.72,
+      "Talk": 3.0,
+      "Death": 1.35
+    },
+    "settings": {
+      "morph": "african-male-young",
+      "skin": "young_african_male/young_darkskinned_male_diffuse.png",
+      "outfit": "male_worksuit01",
+      "hair": "short01"
+    }
+  }
+]

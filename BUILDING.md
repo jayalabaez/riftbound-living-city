@@ -2,7 +2,7 @@
 
 This repository contains two separate prototypes in one Unreal Engine 5.8 project:
 
-- **Riftbound: Voyager**: spherical planets, ship flight, combat, wildlife, enterable city ground floors and co-op. See [VOYAGER.md](VOYAGER.md).
+- **Riftbound: Voyager**: spherical planets, ship flight, combat, wildlife, fully enterable city buildings, animated residents, wanted patrols and co-op. See [VOYAGER.md](VOYAGER.md).
 - **Living City**: a deterministic simulation of 1,500 citizens, jobs, food shopping, a closed money loop and editable heightfield terrain. See [LIVINGCITY.md](LIVINGCITY.md).
 
 ## Get the source
@@ -33,6 +33,8 @@ Install Unreal Engine 5.8 (developed with 5.8.2), the Visual Studio C++ game dev
 Close the Unreal Editor before building. Packaging compiles all runtime modules and cooks both Voyager's Forest map and Living City's Entry map. It writes the Windows build under `Packaged/Riftbound/Windows`.
 
 Natural foliage meshes, PBR textures and materials are included through Git LFS under `Content/Nature`. `Build.ps1` can regenerate them from the included `Art/Nature` sources; optional `python Scripts/bootstrap_voyager_nature.py --prepare` refreshes the documented CC0 downloads and original mesh sources. Runtime streaming uses the existing Procedural Mesh plugin and Unreal's instanced mesh LODs, Sky Atmosphere and Volumetric Cloud components. No paid foliage or bodycam plugin is required. Local NPC dialogue optionally uses Ollama with `llama3.2:3b`; missing Ollama leaves authored dialogue available.
+
+Characters and ships are included under `Content/Characters` and `Content/Ships`; no paid marketplace character or ship plugin is required. Their documented sources are under `Art/Characters` and `Art/Ships`. `Build.ps1` also imports their meshes/materials and the new window material. Character source regeneration needs NumPy/SciPy; importing the included generated sources uses Unreal’s bundled Python and Interchange pipeline. Runtime law enforcement, animation and stair collision run locally without Ollama or external services.
 
 Double-click **Play Voyager City.cmd** to visit a planetary city, **Play Voyager.cmd** for a normal expedition, or **Play Living City.cmd** for the separate simulation. The launchers prefer the local packaged game. Living City's `-Rebuild` option builds and launches through Unreal Editor instead.
 

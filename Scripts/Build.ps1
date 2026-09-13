@@ -27,4 +27,12 @@ $cityBootstrap = Join-Path $PSScriptRoot 'bootstrap_voyager_city_materials.py'
 if ($LASTEXITCODE -ne 0) { throw 'City material generation failed.' }
 $cityReport = Get-Content -LiteralPath (Join-Path $projectRoot 'Saved\VoyagerCityMaterialsReport.json') -Raw | ConvertFrom-Json
 if ($cityReport.status -ne 'success') { throw ('City material generation failed: ' + $cityReport.error) }
+foreach ($assetPass in @('ships','characters','building_materials')) {
+    $assetScript = Join-Path $PSScriptRoot ('bootstrap_voyager_' + $assetPass + '.py')
+    & (Join-Path $engineRoot 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe') $project -unattended '-NullRHI' "-ExecutePythonScript=$assetScript" -NoSplash
+    if ($LASTEXITCODE -ne 0) { throw "Asset generation failed: $assetPass" }
+    $reportName = @{ships='VoyagerShipsReport.json';characters='VoyagerCharactersReport.json';building_materials='VoyagerBuildingMaterialsReport.json'}[$assetPass]
+    $assetReport = Get-Content -LiteralPath (Join-Path $projectRoot ('Saved\' + $reportName)) -Raw | ConvertFrom-Json
+    if ($assetReport.status -ne 'success') { throw "Asset report failed: $assetPass" }
+}
 Write-Host 'Riftbound is ready. Double-click Play Riftbound.cmd.'

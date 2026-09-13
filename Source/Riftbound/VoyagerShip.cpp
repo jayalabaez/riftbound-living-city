@@ -1,4 +1,5 @@
 #include "VoyagerShip.h"
+#include "VoyagerLaw.h"
 #include "VoyagerCharacter.h"
 #include "VoyagerGameMode.h"
 #include "VoyagerWorld.h"
@@ -215,39 +216,15 @@ void AVoyagerShip::BeginPlay()
 
 void AVoyagerShip::BuildVisuals()
 {
-    const FLinearColor Ivory(.72f,.81f,.8f),Blue(.035f,.21f,.37f),Dark(.017f,.035f,.059f),Cyan(.025f,.83f,1.f),Gold(.95f,.4f,.07f);
-    auto Part=[&](const TCHAR* Name,const TCHAR* Shape,FVector At,FVector Scale,FLinearColor Color,bool Glow=false)
-    {return RiftVisual::Mesh(this,VisualRoot,FName(Name),Shape,At,Scale,Color,Glow);};
-    Part(TEXT("ArmoredSpine"),TEXT("Cube"),FVector(-20,0,0),FVector(3.55f,1.1f,.6f),Blue);
-    Part(TEXT("LowerKeel"),TEXT("Cube"),FVector(-25,0,-34),FVector(2.8f,.65f,.22f),Dark);
-    Part(TEXT("ForwardNose"),TEXT("Cone"),FVector(172,0,0),FVector(1.05f,.55f,1.48f),Ivory)->SetRelativeRotation(FRotator(-90,0,0));
-    Part(TEXT("CockpitFrame"),TEXT("Sphere"),FVector(43,0,43),FVector(1.9f,1.02f,.69f),Ivory);
-    Part(TEXT("CockpitGlass"),TEXT("Sphere"),FVector(58,0,54),FVector(1.59f,.88f,.53f),FLinearColor(.025f,.22f,.27f));
-    Part(TEXT("CanopySpine"),TEXT("Cube"),FVector(42,0,80),FVector(1.42f,.065f,.08f),Blue);
-    Part(TEXT("TailReactor"),TEXT("Cube"),FVector(-149,0,27),FVector(.85f,1.01f,.28f),Ivory);
-    Part(TEXT("CenterEngine"),TEXT("Cylinder"),FVector(-205,0,0),FVector(.69f,.69f,.7f),Dark)->SetRelativeRotation(FRotator(90,0,0));
-    Part(TEXT("NoseStripe"),TEXT("Cube"),FVector(134,0,29),FVector(1.65f,.18f,.045f),Gold);
+    ShipVisuals=VoyagerShipVisuals::Build(this,VisualRoot,VoyagerShipVisuals::ELivery::Explorer);
+    if(GetNetMode()==NM_DedicatedServer)return;
+    const FLinearColor Cyan(.025f,.83f,1.f);
     for(int32 Side=-1;Side<=1;Side+=2)
     {
-        auto Wing=Part(*FString::Printf(TEXT("SweptWing%d"),Side),TEXT("Cube"),FVector(-64,Side*180,0),FVector(1.50f,3.35f,.16f),Ivory);
-        Wing->SetRelativeRotation(FRotator(0,Side*24.f,Side*3.f));
-        auto Inlay=Part(*FString::Printf(TEXT("WingBlue%d"),Side),TEXT("Cube"),FVector(-52,Side*166,11),FVector(.75f,2.69f,.07f),Blue);
-        Inlay->SetRelativeRotation(FRotator(0,Side*24.f,Side*3.f));
-        Part(*FString::Printf(TEXT("WingTip%d"),Side),TEXT("Cube"),FVector(-118,Side*326,10),FVector(1.04f,.22f,.33f),Blue);
-        Part(*FString::Printf(TEXT("Navigation%d"),Side),TEXT("Sphere"),FVector(-70,Side*339,18),FVector(.12f),Side<0?Cyan:Gold,true);
-        Part(*FString::Printf(TEXT("EngineHousing%d"),Side),TEXT("Cylinder"),FVector(-137,Side*120,-12),FVector(.63f,.63f,1.62f),Dark)->SetRelativeRotation(FRotator(90,0,0));
-        Part(*FString::Printf(TEXT("EngineSleeve%d"),Side),TEXT("Cylinder"),FVector(-112,Side*120,-12),FVector(.68f,.68f,.84f),Blue)->SetRelativeRotation(FRotator(90,0,0));
-        auto Glow=Part(*FString::Printf(TEXT("EngineGlow%d"),Side),TEXT("Sphere"),FVector(-228,Side*120,-12),FVector(.32f,.44f,.44f),Cyan,true);Engines.Add(Glow);
-        auto Exhaust=Part(*FString::Printf(TEXT("Exhaust%d"),Side),TEXT("Cone"),FVector(-279,Side*120,-12),FVector(.39f,.39f,1.05f),Cyan,true);
-        Exhaust->SetRelativeRotation(FRotator(90,0,0));Engines.Add(Exhaust);
-        Part(*FString::Printf(TEXT("LaserCannon%d"),Side),TEXT("Cylinder"),FVector(66,Side*192,-9),FVector(.105f,.105f,1.34f),Dark)->SetRelativeRotation(FRotator(90,0,0));
-        Part(*FString::Printf(TEXT("CannonGlow%d"),Side),TEXT("Sphere"),FVector(138,Side*192,-9),FVector(.105f),Cyan,true);
-        auto Tail=Part(*FString::Printf(TEXT("TailFin%d"),Side),TEXT("Cube"),FVector(-159,Side*70,66),FVector(.75f,.09f,.95f),Blue);
-        Tail->SetRelativeRotation(FRotator(-25,0,Side*22.f));
-        auto Beam=Part(*FString::Printf(TEXT("ShipLaser%d"),Side),TEXT("Cylinder"),FVector::ZeroVector,FVector(.035f),Cyan,true);
+        auto Beam=RiftVisual::Mesh(this,VisualRoot,FName(*FString::Printf(TEXT("ShipLaser%d"),Side)),TEXT("Cylinder"),FVector::ZeroVector,FVector(.035f),Cyan,true);
         Beam->SetVisibility(false);LaserBeams.Add(Beam);
     }
-    Impact=Part(TEXT("LaserImpact"),TEXT("Sphere"),FVector::ZeroVector,FVector(.35f),Cyan,true);Impact->SetVisibility(false);
+    Impact=RiftVisual::Mesh(this,VisualRoot,TEXT("LaserImpact"),TEXT("Sphere"),FVector::ZeroVector,FVector(.35f),Cyan,true);Impact->SetVisibility(false);
 }
 
 void AVoyagerShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -558,15 +535,9 @@ void AVoyagerShip::Tick(float DeltaSeconds)
     const float DesiredBank=IsLocallyControlled()&&!bLanded?FMath::Clamp(-StrafeInput*20.f-ThrottleInput*2.f,-27.f,27.f):0.f;
     VisualBank=FMath::FInterpTo(VisualBank,DesiredBank,DeltaSeconds,4.f);
     VisualRoot->SetRelativeRotation(FRotator(0,0,VisualBank));
-    VisualRoot->SetRelativeLocation(FVector(0,0,bLanded?FMath::Sin(Age*1.8f)*3.f:0.f));
+    VisualRoot->SetRelativeLocation(FVector::ZeroVector);
     const float Thrust=bLanded?.15f:FMath::Clamp(.3f+float(FlightVelocity.Size())/250000.f,.3f,2.2f);
-    for(int32 Index=0;Index<Engines.Num();++Index)
-    {
-        auto E=Engines[Index];if(!E)continue;
-        const float Flicker=1.f+FMath::Sin(Age*29.f+Index)*.055f;
-        if(Index%2)E->SetRelativeScale3D(FVector(.39f,.39f,(.32f+Thrust)*Flicker));
-        else E->SetRelativeScale3D(FVector(.32f*Flicker,.44f,.44f));
-    }
+    VoyagerShipVisuals::Update(ShipVisuals,DeltaSeconds,Age,Thrust,bLanded);
     Camera->SetFieldOfView(FMath::FInterpTo(Camera->FieldOfView,88.f+FMath::Clamp(float(FlightVelocity.Size())/2000000.f,0.f,1.f)*13.f,DeltaSeconds,3.f));
     if(EffectsRemaining>0)
     {
@@ -631,6 +602,13 @@ void AVoyagerShip::ServerShoot_Implementation()
         if(Alignment>BestAlignment){BestAlignment=Alignment;Assisted=*It;}
     }
     if(Assisted)End=Assisted->GetActorLocation();
+    for(TActorIterator<AVoyagerPatrolShip> It(GetWorld());It;++It)
+    {
+        const FVector To=It->GetActorLocation()-Sight;const float Distance=To.Size();
+        if(Distance>100000.f||Distance<400.f||It->Hull<=0)continue;
+        const float Alignment=FVector::DotProduct(To/Distance,Direction);
+        if(Alignment>BestAlignment){BestAlignment=Alignment;End=It->GetActorLocation();}
+    }
     FHitResult Hit;bool bHit=GetWorld()->LineTraceSingleByChannel(Hit,Start,End+(End-Start).GetSafeNormal()*40.f,ECC_Visibility,Query);
     if(bHit)
     {
@@ -695,21 +673,11 @@ void AVoyagerPirate::BeginPlay()
 {
     Super::BeginPlay();OrbitPhase=FMath::FRandRange(0.f,6.283f);FireTime=FMath::FRandRange(3.5f,6.f);
     if(HasAuthority()){Pose.Location=GetActorLocation();Pose.Rotation=GetActorRotation();}
-    const FLinearColor Dark(.055f,.022f,.028f),Red(.48f,.055f,.025f),Glow(1.f,.065f,.008f);
-    auto Part=[&](const TCHAR* Name,const TCHAR* Shape,FVector At,FVector Scale,FLinearColor Color,bool bGlow=false)
-    {return RiftVisual::Mesh(this,VisualRoot,FName(Name),Shape,At,Scale,Color,bGlow);};
-    Part(TEXT("RaiderCore"),TEXT("Cube"),FVector::ZeroVector,FVector(2.8f,1.3f,.65f),Dark);
-    Part(TEXT("RaiderNose"),TEXT("Cone"),FVector(150,0,0),FVector(1.2f,.58f,1.8f),Red)->SetRelativeRotation(FRotator(-90,0,0));
-    Part(TEXT("RaiderCockpit"),TEXT("Sphere"),FVector(48,0,43),FVector(.85f,.83f,.3f),Glow,true);
-    for(int32 Side=-1;Side<=1;Side+=2)
+    ShipVisuals=VoyagerShipVisuals::Build(this,VisualRoot,VoyagerShipVisuals::ELivery::Raider);
+    if(GetNetMode()!=NM_DedicatedServer)
     {
-        Part(*FString::Printf(TEXT("RaiderWing%d"),Side),TEXT("Cube"),FVector(-3,Side*169,0),FVector(.8f,2.7f,.24f),Red)->SetRelativeRotation(FRotator(0,Side*-32.f,Side*18.f));
-        Part(*FString::Printf(TEXT("RaiderBlade%d"),Side),TEXT("Cone"),FVector(105,Side*270,18),FVector(.53f,.38f,2.6f),Dark)->SetRelativeRotation(FRotator(-90,0,0));
-        Part(*FString::Printf(TEXT("RaiderGun%d"),Side),TEXT("Sphere"),FVector(208,Side*270,18),FVector(.19f),Glow,true);
-        Part(*FString::Printf(TEXT("RaiderEngine%d"),Side),TEXT("Sphere"),FVector(-170,Side*75,0),FVector(.55f,.4f,.4f),Glow,true);
+        Beam=RiftVisual::Mesh(this,VisualRoot,TEXT("RaiderBeam"),TEXT("Cylinder"),FVector::ZeroVector,FVector(.035f),FLinearColor(1.f,.065f,.008f),true);Beam->SetVisibility(false);
     }
-    Engine=Part(TEXT("RaiderExhaust"),TEXT("Cone"),FVector(-237,0,0),FVector(.62f,.62f,2.1f),Glow,true);Engine->SetRelativeRotation(FRotator(90,0,0));
-    Beam=Part(TEXT("RaiderBeam"),TEXT("Cylinder"),FVector::ZeroVector,FVector(.035f),Glow,true);Beam->SetVisibility(false);
 }
 
 void AVoyagerPirate::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -735,7 +703,7 @@ AVoyagerShip* AVoyagerPirate::FindTarget() const
 void AVoyagerPirate::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);Age+=DeltaSeconds;
-    if(Engine)Engine->SetRelativeScale3D(FVector(.62f,.62f,2.f+FMath::Sin(Age*22.f)*.15f));
+    VoyagerShipVisuals::Update(ShipVisuals,DeltaSeconds,Age,.8f,false,true);
     if(EffectRemaining>0){EffectRemaining-=DeltaSeconds;if(EffectRemaining<=0&&Beam)Beam->SetVisibility(false);}
     if(!HasAuthority()||Hull<=0)return;
     const auto State=GetWorld()->GetGameState<AVoyagerState>();if(!State||State->bTransitioning)return;

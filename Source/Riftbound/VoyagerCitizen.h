@@ -7,6 +7,8 @@
 class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
 class UCapsuleComponent;
+class USkeletalMeshComponent;
+class UAnimationAsset;
 
 USTRUCT()
 struct FVoyagerCitizenIdentity
@@ -57,6 +59,10 @@ public:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     virtual FVector GetVelocity() const override { return Pose.Velocity; }
     void InitializeCitizen(int32 System,int32 Planet,int32 Site,int32 Ordinal,int32 StartNode);
+    virtual float TakeDamage(float Damage,const FDamageEvent& Event,AController* DamageInstigator,AActor* Causer) override;
+    UPROPERTY(ReplicatedUsing=OnRep_Health) float Health=100.f;
+    UPROPERTY(Replicated) float DeathTime=0.f;
+    bool IsAlive() const { return Health>0.f; }
     FString DisplayName() const;
     FString RoleName() const;
     FString ActivityName() const;
@@ -72,6 +78,9 @@ public:
     int32 OrdinalIndex() const { return Identity.Ordinal; }
 
 private:
+    UPROPERTY() TObjectPtr<USkeletalMeshComponent> CitizenMesh;
+    UPROPERTY() TArray<TObjectPtr<UAnimationAsset>> CharacterAnimations;
+    UFUNCTION() void OnRep_Health();
     UPROPERTY() TObjectPtr<USceneComponent> VisualRoot;
     UPROPERTY() TObjectPtr<USceneComponent> BodyRoot;
     UPROPERTY() TObjectPtr<USceneComponent> HeadPivot;
@@ -135,6 +144,7 @@ public:
     int32 ActiveCitizenCount() const { return Population; }
     int32 CitizensInCity(int32 Planet,int32 Site=0) const;
     void ReportDisturbance(const FVector& Position);
+    void RecordDeath(const AVoyagerCitizen* Citizen);
     static float CityHour(const UWorld* World);
     static FString ClockText(const UWorld* World);
     static constexpr int32 CitizensPerCity=36;
@@ -146,6 +156,7 @@ private:
     UPROPERTY(Replicated) TArray<int32> CityPopulations;
     int32 ActiveSystem=INDEX_NONE;
     int32 CityCursor=0;
+    TSet<int32> DeadCitizens;
     float LastReportTime=-100.f;
     FVector LastReportPosition=FVector::ZeroVector;
     void ClearPopulation();

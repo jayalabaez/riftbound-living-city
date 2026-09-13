@@ -16,7 +16,7 @@ The settlement marker leads to a city about **320 metres** from the landing site
 
 - **WASD** walk; **mouse** look; **Shift** sprint; **Space** jump.
 - **F** scan and record this planet. A first discovery earns 30 minerals.
-- **Left mouse** mines a targeted crystal within 18 metres.
+- **Left mouse** mines a targeted crystal within 18 metres. **V** switches to the pulse sidearm; left mouse then fires out to 1,200 metres. Both tools can hurt residents, so aim carefully.
 - **E** talks to the resident you are looking toward within 4 metres, or boards your own ship within 11 metres.
 - During a conversation, **1** greets, **2** asks about daily life, **3** asks for local advice, and **Backspace** ends the conversation. Walking away also ends it.
 - On foot, **C** switches between the bodycam-style walking view and a steady camera. The bodycam view uses a wider field of view, restrained movement and subtle grain; the mining tool appears while used.
@@ -47,17 +47,23 @@ The system index supports over two billion system seeds, with five destinations 
 
 ## Cities, wildlife, and landscapes
 
-Each planet has three deterministic settlement sites: one near the north landing area and two remote sites. Each city is roughly 400 metres across, with **60 enterable ground floors**, terrain foundations, roads, roof equipment, antennae, and a central landing plaza. The city palette follows the planet's biome. Street ramps, open doorways, rooms and the surrounding planet share the same coordinates and collision. There are no interior loading screens. Four buildings per city also have galleries reached by stairs; the higher tower floors remain exterior scenery.
+Each planet has three deterministic settlement sites: one near the north landing area and two remote sites. Each city is roughly 400 metres across, with **60 fully enterable buildings**, terrain foundations, roads, roof equipment, antennae, and a central landing plaza. The city palette follows the planet's biome. Street ramps, open doorways, rooms and the surrounding planet share the same coordinates and collision. There are no interior loading screens. Buildings have 3–18 occupied floors with 4.8-metre floor spacing. Switchback stairs connect every floor to an accessible roof. Window openings have glass and frames; entrance doors stand open. Smooth ramp collision under visible steps lets characters walk naturally. No elevator is required for access.
 
 Six furnished layouts provide cafe seating and counters, clinic beds, market shelves, workshop benches, residential lounges and security dispatch desks. Original procedural materials add plaster, wood, metal, fabric and ceramic finishes. Nearby rooms receive warm lighting from a pool of at most eight active lights, with four more lights illuminating nearby streets. The multitool is lowered while you explore a city; using it brings it back up.
 
-Cities populate with up to **36 humanoid residents** nearby, with a shared **72-person cap** distributed across cities visited by co-op players. Seeded identities supply names, clothing, homes and workplaces. Residents follow street and doorway routes, visit cafes, work, rest, deliver supplies or patrol. Mining tools and nearby ship weapons can make civilians seek shelter and guards investigate. Conversations use authored responses tied to roles and locations; they do not call an online language model. The routine clock advances one in-game hour per real minute; it is not yet a planetary day/night lighting simulation. Citizens stream out when everyone leaves; their names remain stable when revisiting, while their moment-to-moment routines restart.
+Cities populate with up to **36 humanoid residents** nearby, with a shared **72-person cap** distributed across cities visited by co-op players. Seeded identities supply names, clothing, homes and workplaces. Residents follow street and doorway routes, visit cafes, work, rest, deliver supplies or patrol. Mining tools and nearby ship weapons can make civilians seek shelter and guards investigate. Conversations start with authored responses tied to roles and locations; optional local Ollama rewrites are validated before display. The routine clock advances one in-game hour per real minute; it is not yet a planetary day/night lighting simulation. Citizens stream out when everyone leaves; their names remain stable when revisiting, while their moment-to-moment routines restart. Dead residents stay absent when a city streams out and back in during the same star-system visit; those deaths and active wanted cases are session state, not part of the expedition save.
 
 Five biome species graze, wander, and flee from approaching explorers: crestback grazers, dune sailrunners, tundra tuskbeasts, ashwing striders, and lanternback browsers. Their articulated bodies animate as they move over the spherical ground. The server manages a shared population of up to 24 nearby animals; distant animals and city detail stream out to keep runtime memory bounded.
 
 Terrain combines an original generated rock-and-grit albedo texture with biome tinting and procedural variation. Continuous surface coordinates keep material detail aligned across terrain patches. Planetary atmospheres, spherical cloud layers, distant cloud coverage, and changing views of the curved horizon connect the ground and orbital views. Texture provenance is recorded in [Art/Textures/PROVENANCE.md](Art/Textures/PROVENANCE.md).
 
 ## Combat and progression
+
+**V** equips a pulse sidearm. Residents have authoritative health, react to assault, and can die; their non-graphic collapse, stopped routine and closed conversations replicate to co-op players. Skin, fitted clothing, hair, eyes and skeletal animation use documented CC0 MakeHuman assets and original clips.
+
+Crimes trigger emergency reports and **one to five wanted stars**. Repeated assault, homicide and attacks on law enforcement escalate the response. Up to four patrol ships respond to each suspect, with independent cases for co-op players. They use line-of-sight sensors, follow the last observed position when the suspect is hidden, and stand down after 35–75 seconds without contact. Opaque walls and roofs break sight; window glass stops shots but allows vision. Patrol shots have a short targeting warning so movement can evade them. Patrols can be damaged and destroyed; doing so escalates the case. Escape in your ship, hide inside a building, or leave the star system. Emergency suit/ship recovery ends a pursuit and preserves cargo.
+
+The scout, corsairs and patrols use a shared original Kestrel airframe with separate liveries, a framed canopy, recessed engines, retracting landing gear, streamed PBR materials and three mesh detail levels. Patrols have flashing beacons and a search light.
 
 Red corsair ships appear in orbit. Their shots are telegraphed, so move or boost to evade. Your scout has shields and hull integrity; shields start recharging after six seconds without damage. Defeating a corsair awards 25 minerals. Each laser upgrade adds five damage. Emergency recovery repairs your ship if it is destroyed and preserves cargo.
 
@@ -77,6 +83,11 @@ The host runs one shared star system. Players have separate ships and cargo and 
 - `Scripts/bootstrap_voyager_materials.py`: import terrain albedo and generate terrain, planet, atmosphere, architecture, and animal materials in Unreal's Python environment.
 - `Scripts/bootstrap_voyager_clouds.py`: generate the volumetric and distant cloud materials.
 - `Scripts/bootstrap_voyager_city_materials.py`: generate the interior and citizen materials.
+- `Scripts/bootstrap_voyager_characters.py`: import the clothed skeletal characters, five animation clips per variant and three LODs.
+- `Scripts/bootstrap_voyager_ships.py`: import the original Kestrel meshes, LODs and PBR materials.
+- `Scripts/bootstrap_voyager_building_materials.py`: build clear architectural glazing.
+- `Scripts/Test-VoyagerCrime.ps1`: actual sidearm hits, deaths, patrol arrival/fire, hiding, search expiry and recovery. Add `-Network` for replicated cases/deaths and an innocent peer, `-Render` for game captures, `-Packaged` for the standalone build.
+- `Scripts/Test-VoyagerBuildings.ps1`: walk ordinary stairs through every floor and roof in four buildings and check collision across two complete cities.
 - `Scripts/Package.ps1`: build/cook the standalone Windows game.
 - `Scripts/Test-Voyager.ps1`: automated solo exploration test.
 - `Scripts/Test-Voyager.ps1 -Network`: separate listen host and client, including client-driven boarding, flight, travel, mining, and discovery.
@@ -89,6 +100,8 @@ The host runs one shared star system. Players have separate ships and cargo and 
 - Test reports/logs are retained in `Saved`; tests stop only their own processes.
 
 Open `Riftbound.uproject` in Unreal Engine to edit the project. The saved Forest map is intentionally empty: the selected game mode builds its scenery at runtime. Build scripts currently target `C:\Program Files\Epic Games\UE_5.8` and require Visual Studio C++ Build Tools and a Windows SDK. Test commands describe the available checks; consult the generated reports for the result of a particular build.
+
+Version **0.7.0** adds textured skeletal residents, killable NPCs, pulse-sidearm and per-player wanted cases, searching patrol ships, original Kestrel airframes and fully connected tower interiors. Validation includes 21 solo exploration/flight checks, 24 co-op flight checks, rendered crime/replication checks, and 120-building collision audits with four complete roof round trips. Rendered audits also verify material assignments and glazing; death motion is checked for ground contact. Reports are generated locally under `Saved` and are not distributed as source assets.
 
 Version **0.5.0** passed **26 city checks** in both the editor and packaged game, including real character movement through seven entrances, six furnished room types, stairs and a remote spherical settlement. Both builds also passed **15 city network checks** using two real processes on planets about 6,326 km apart: identities, motion, dialogue topics, ending conversations, and alarm replication. The existing **24 co-op exploration/flight checks** passed again. Both normal Expedition files retained their original SHA256 hashes during the city audits. See [packaged city results](Saved/VoyagerCityPackagedReport.json), [packaged city network results](Saved/VoyagerCityNetworkPackagedReport.json), [flight regression results](Saved/VoyagerNetworkReport.json), and [release evidence](Saved/VoyagerCityRelease.json).
 

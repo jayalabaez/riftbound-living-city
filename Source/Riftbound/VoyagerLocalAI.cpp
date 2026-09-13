@@ -39,7 +39,7 @@ namespace
         {
             const TCHAR* StableDialogueTests[] = {TEXT("VoyagerTest"), TEXT("VoyagerNetTest"), TEXT("VoyagerSurfaceAudit"),
                 TEXT("VoyagerLifeAudit"), TEXT("VoyagerCityAudit"), TEXT("VoyagerCityNetAudit"),
-                TEXT("LivingCityIsolationAudit"), TEXT("VoyagerRealismAudit")};
+                TEXT("LivingCityIsolationAudit"), TEXT("VoyagerRealismAudit"), TEXT("VoyagerCrimeAudit"), TEXT("VoyagerBuildingAudit")};
             for (const TCHAR* Flag : StableDialogueTests) if (FParse::Param(CommandLine, Flag)) return false;
         }
         return true;
@@ -49,7 +49,7 @@ namespace
     {
         if (!IsValid(Controller) || !IsValid(Citizen) || !Controller->IsLocalController() ||
             !Controller->GetLocalPlayer() || Controller->GetNetMode() == NM_DedicatedServer ||
-            Controller->GetWorld() != Citizen->GetWorld() || Citizen->IsAlarmed()) return false;
+            Controller->GetWorld() != Citizen->GetWorld() || Citizen->IsAlarmed() || !Citizen->IsAlive()) return false;
         const auto* State = Controller->GetWorld()->GetGameState<AVoyagerState>();
         return State && !State->bTransitioning && State->SystemSeed == Citizen->SystemIndex();
     }

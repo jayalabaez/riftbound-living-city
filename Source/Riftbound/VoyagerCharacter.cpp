@@ -1,4 +1,5 @@
 #include "VoyagerCharacter.h"
+#include "VoyagerLaw.h"
 #include "VoyagerGameMode.h"
 #include "VoyagerShip.h"
 #include "VoyagerWorld.h"
@@ -49,6 +50,7 @@ public:
 AVoyagerCharacter::AVoyagerCharacter()
 {
     PrimaryActorTick.bCanEverTick=true;bReplicates=true;SetNetUpdateFrequency(40);
+    GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
     GetCapsuleComponent()->InitCapsuleSize(34,88);GetCharacterMovement()->MaxWalkSpeed=620;GetCharacterMovement()->JumpZVelocity=570;GetCharacterMovement()->AirControl=.4f;
     Camera=CreateDefaultSubobject<UCameraComponent>(TEXT("ExplorerCamera"));Camera->SetupAttachment(GetRootComponent());Camera->SetRelativeLocation(FVector(0,0,64));Camera->bUsePawnControlRotation=true;Camera->FieldOfView=90;
     Tool=CreateDefaultSubobject<USceneComponent>(TEXT("MultiTool"));Tool->SetupAttachment(Camera);Tool->SetRelativeLocation(FVector(42,20,-18));Tool->SetRelativeScale3D(FVector(.55f));
@@ -76,7 +78,7 @@ void AVoyagerCharacter::BeginPlay()
     auto Visor=RiftVisual::Mesh(this,GetRootComponent(),TEXT("ExplorerVisor"),TEXT("Sphere"),FVector(14,0,50),FVector(.2f,.36f,.22f),Mint,true);Visor->SetOwnerNoSee(true);
     for(int I=-1;I<=1;I+=2){auto Leg=RiftVisual::Mesh(this,GetRootComponent(),FName(*FString::Printf(TEXT("Boot%d"),I)),TEXT("Cube"),FVector(0,I*15,-66),FVector(.2f,.21f,.44f),Ink);Leg->SetOwnerNoSee(true);}
 }
-void AVoyagerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerCharacter,Health);}
+void AVoyagerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerCharacter,Health);DOREPLIFETIME(AVoyagerCharacter,bWeaponMode);}
 bool AVoyagerCharacter::CanAct() const
 {
     auto State=GetWorld()->GetGameState<AVoyagerState>();auto PC=Cast<AVoyagerController>(Controller);return (!State||!State->bTransitioning)&&(!PC||!PC->bMenuVisible);
@@ -88,6 +90,7 @@ void AVoyagerCharacter::SetupPlayerInputComponent(UInputComponent* I)
     I->BindAction("Fire",IE_Pressed,this,&AVoyagerCharacter::StartMine);I->BindAction("Fire",IE_Released,this,&AVoyagerCharacter::StopMine);
     I->BindAction("Interact",IE_Pressed,this,&AVoyagerCharacter::Interact);I->BindAction("Scan",IE_Pressed,this,&AVoyagerCharacter::Scan);
     I->BindAction("Sprint",IE_Pressed,this,&AVoyagerCharacter::Sprint);I->BindAction("Sprint",IE_Released,this,&AVoyagerCharacter::StopSprint);
+    I->BindKey(EKeys::V,IE_Pressed,this,&AVoyagerCharacter::ToggleWeapon);
     I->BindKey(EKeys::C,IE_Pressed,this,&AVoyagerCharacter::ToggleBodycam);
 }
 void AVoyagerCharacter::ToggleBodycam()
@@ -165,7 +168,7 @@ AVoyagerCitizen* AVoyagerCharacter::FocusedCitizen() const
     for(TActorIterator<AVoyagerCitizen> It(GetWorld());It;++It)
     {
         const double Distance=FVector::DistSquared(GetActorLocation(),It->GetActorLocation());
-        if(Distance>=RangeSquared)continue;
+        if(!It->IsAlive()||Distance>=RangeSquared)continue;
         const FVector ToFace=It->GetActorLocation()+It->GetActorUpVector()*145-Eye;
         if(FVector::DotProduct(GetBaseAimRotation().Vector(),ToFace.GetSafeNormal())<.3)continue;
         FHitResult Hit; FCollisionQueryParams Query(SCENE_QUERY_STAT(VoyagerConversation),false,this);
@@ -185,7 +188,7 @@ void AVoyagerCharacter::ServerTalk_Implementation(int32 Topic)
 {
     if(!CanAct()||Topic<0||Topic>2||GetWorld()->GetTimeSeconds()-LastTalk<.35f)return;
     auto* Citizen=TalkPartner.Get();auto* PC=Cast<AVoyagerController>(Controller);
-    if(!Citizen||!PC)return;
+    if(!Citizen||!Citizen->IsAlive()||!PC)return;
     if(FVector::DistSquared(GetActorLocation(),Citizen->GetActorLocation())>400.0*400.0){TalkPartner.Reset();return;}
     LastTalk=GetWorld()->GetTimeSeconds();
     const FString Reply=Citizen->TalkTo(this,Topic);
@@ -209,9 +212,12 @@ void AVoyagerCharacter::ServerMine_Implementation(FVector_NetQuantizeNormal Dire
     if(!CanAct()||Direction.ContainsNaN()||!FMath::IsNearlyEqual(Direction.SizeSquared(),1.f,.02f)||GetWorld()->TimeSeconds-LastServerShot<.19f)return;
     LastServerShot=GetWorld()->TimeSeconds;FVector Start=GetActorLocation()+GetActorUpVector()*64;FHitResult Hit;FCollisionQueryParams Q(SCENE_QUERY_STAT(VoyagerMine),true,this);
     for(TActorIterator<AVoyagerCitizenManager> It(GetWorld());It;++It)It->ReportDisturbance(Start);
-    bool bHit=GetWorld()->LineTraceSingleByChannel(Hit,Start,Start+Direction*1800,ECC_Visibility,Q);bool Success=false;
-    if(auto Resource=Cast<AVoyagerResource>(Hit.GetActor())){UGameplayStatics::ApplyPointDamage(Resource,20,Direction,Hit,Controller,this,nullptr);Success=true;}
-    MiningBeam(bHit?Hit.ImpactPoint:Start+Direction*1800,Success);
+    const float Range=bWeaponMode?120000.f:1800.f;
+    bool bHit=GetWorld()->LineTraceSingleByChannel(Hit,Start,Start+Direction*Range,ECC_Visibility,Q);bool Success=false;
+    AActor* Victim=Hit.GetActor();
+    if(Victim&&(Cast<AVoyagerResource>(Victim)||Cast<AVoyagerCitizen>(Victim)||(bWeaponMode&&(Cast<AVoyagerPatrolShip>(Victim)||Cast<AVoyagerPirate>(Victim)))))
+        Success=UGameplayStatics::ApplyPointDamage(Victim,bWeaponMode?34.f:20.f,Direction,Hit,Controller,this,nullptr)>0;
+    MiningBeam(bHit?Hit.ImpactPoint:Start+Direction*Range,Success);
 }
 void AVoyagerCharacter::MiningBeam_Implementation(FVector End,bool Success)
 {
@@ -296,7 +302,7 @@ void AVoyagerController::Tick(float D)
 {
     Super::Tick(D);NoticeTime=FMath::Max(0.f,NoticeTime-D);
     ConversationTime=FMath::Max(0.f,ConversationTime-D);
-    if(ConversationTime>0&&(!ConversationTarget.IsValid()||!Cast<AVoyagerCharacter>(GetPawn())||
+    if(ConversationTime>0&&(!ConversationTarget.IsValid()||!ConversationTarget->IsAlive()||!Cast<AVoyagerCharacter>(GetPawn())||
         FVector::DistSquared(GetPawn()->GetActorLocation(),ConversationTarget->GetActorLocation())>500.0*500.0))CloseConversation();
     if(FParse::Param(FCommandLine::Get(),TEXT("VoyagerProbe")))RunProbe(D);
 }
@@ -598,4 +604,19 @@ void AVoyagerController::RunSurfaceAudit(float D)
             ++TestStage;StageStarted=TestTime;
         }
     }
+}
+
+void AVoyagerCharacter::ToggleWeapon(){if(CanAct())ServerToggleWeapon();}
+void AVoyagerCharacter::ServerToggleWeapon_Implementation()
+{
+    if(!CanAct())return;bWeaponMode=!bWeaponMode;ForceNetUpdate();
+    if(auto PC=Cast<AVoyagerController>(Controller))PC->Notify(bWeaponMode?TEXT("PULSE SIDEARM / LMB fire. Attacking residents or patrols raises your wanted level. V returns to extraction."):TEXT("EXTRACTION TOOL / LMB mine. V equips pulse sidearm."));
+}
+float AVoyagerCharacter::TakeDamage(float Damage,const FDamageEvent& Event,AController* DamageInstigator,AActor* Causer)
+{
+    if(!HasAuthority()||Health<=0||!FMath::IsFinite(Damage)||Damage<=0)return 0;
+    auto State=GetWorld()->GetGameState<AVoyagerState>();if(State&&State->bTransitioning)return 0;
+    const float Applied=FMath::Min(Health,Damage);Health-=Applied;ForceNetUpdate();
+    if(Health<=0)if(auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())GM->RecoverExplorer(this);
+    return Applied;
 }

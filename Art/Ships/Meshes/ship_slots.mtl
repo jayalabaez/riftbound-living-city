@@ -1,0 +1,26 @@
+newmtl HullPaint
+Kd 0.6 0.6 0.6
+
+newmtl DarkPanels
+Kd 0.6 0.6 0.6
+
+newmtl BrushedMetal
+Kd 0.6 0.6 0.6
+
+newmtl Livery
+Kd 0.6 0.6 0.6
+
+newmtl Interior
+Kd 0.6 0.6 0.6
+
+newmtl Instrument
+Kd 0.6 0.6 0.6
+
+newmtl Thruster
+Kd 0.6 0.6 0.6
+
+newmtl CanopyGlass
+Kd 0.6 0.6 0.6
+
+newmtl Beacon
+Kd 0.6 0.6 0.6
