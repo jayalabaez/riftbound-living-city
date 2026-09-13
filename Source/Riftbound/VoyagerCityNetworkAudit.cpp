@@ -16,8 +16,13 @@ namespace
         TMap<TWeakObjectPtr<AVoyagerCitizen>,FVector> Positions;
         FString Greeting;
         FVector ResumePosition=FVector::ZeroVector;
+        float DialogueFixtureSeenAt=-1.f;
         int32 InitialSystem=INDEX_NONE;
     };
+    FString DialogueFixtureToken(const AVoyagerCitizen* Subject)
+    {
+        return FString::Printf(TEXT("VOYAGER_AUDIT_FIXTURE %d %d %d %d"),Subject->SystemIndex(),Subject->PlanetIndex(),Subject->SiteIndex(),Subject->OrdinalIndex());
+    }
     // Automation-only state is local to the controller in each real process.
     TMap<TWeakObjectPtr<AVoyagerController>,FCityNetworkAuditData> CityNetworkAudits;
 }
@@ -93,12 +98,17 @@ void AVoyagerController::RunCityNetworkAudit(float DeltaSeconds)
                 if(It->PlanetIndex()!=1||It->SiteIndex()!=1||It->IsIndoors()||It->GetVelocity().Size()<60.f)continue;
                 const FVector At=It->GetActorLocation(),Up=Voyager::SurfaceNormal(State->SystemSeed,1,At);
                 Place(Remote,RemotePawn,At-It->GetActorForwardVector()*240.f+Up*95.f,Up,It->GetActorForwardVector());
+                if(RemotePawn->FocusedCitizen()!=*It)continue;
                 // Pause behavior for a stable fixture, but deliberately do not
                 // call ShowConversation: only the real client's RPC can do that.
                 if(!It->TalkTo(RemotePawn,0).IsEmpty()){Subject=*It;break;}
             }
             if(!Subject){Fail(TEXT("DIALOGUE_FIXTURE_VISIBILITY"));return;}
             Audit.Subject=Subject;
+            // Ambient greetings also use the Talk activity. Identify the actual primed
+            // fixture through the existing reliable notification RPC, without opening a
+            // conversation or exercising the interaction path on the client's behalf.
+            Remote->Notify(DialogueFixtureToken(Subject));
             UE_LOG(LogTemp,Display,TEXT("VOYAGER CITY NETWORK AUDIT PASS AUTHORITATIVE_MOTION net=%d moving=%d"),Net,Moving);
             UE_LOG(LogTemp,Display,TEXT("VOYAGER CITY NETWORK AUDIT PASS DIALOGUE_FIXTURE net=%d citizen=%s"),Net,*Subject->DisplayName());
             Advance();return;
@@ -145,16 +155,27 @@ void AVoyagerController::RunCityNetworkAudit(float DeltaSeconds)
     }
     if(TestStage==2)
     {
+        if(Elapsed>22.f){Fail(TEXT("NETWORK_DIALOGUE_TARGET"));return;}
         if(auto* Subject=Explorer->FocusedCitizen())
         {
-            if(Subject->ActivityName()!=TEXT("Speaking with you"))return;
-            Audit.Subject=Subject;
-            // Priming TalkTo on the server has a short anti-spam cooldown.
-            if(Elapsed<2.f)return;
-            SetControlRotation(Voyager::TangentRotation(Voyager::SurfaceNormal(State->SystemSeed,1,Explorer->GetActorLocation()),Subject->GetActorLocation()-Explorer->GetActorLocation()));
-            Explorer->ServerInteract();Advance();return;
+            if(Subject->ActivityName()==TEXT("Speaking with you")&&Notice==DialogueFixtureToken(Subject))
+            {
+                if(Audit.Subject.Get()!=Subject||Audit.DialogueFixtureSeenAt<0.f)
+                {
+                    Audit.Subject=Subject;Audit.DialogueFixtureSeenAt=TestTime;
+                    UE_LOG(LogTemp,Display,TEXT("VOYAGER CITY NETWORK AUDIT FIXTURE OBSERVED net=%d citizen=%s time=%.3f"),Net,*Subject->DisplayName(),TestTime);
+                }
+                // TalkTo's .55 s anti-spam cooldown starts at host priming, which can
+                // happen long after this client entered stage 2. Wait .55 s + .25 s
+                // from first observing this exact fixture, then issue ONE real RPC.
+                const float FixtureElapsed=TestTime-Audit.DialogueFixtureSeenAt;
+                if(FixtureElapsed<.8f)return;
+                SetControlRotation(Voyager::TangentRotation(Voyager::SurfaceNormal(State->SystemSeed,1,Explorer->GetActorLocation()),Subject->GetActorLocation()-Explorer->GetActorLocation()));
+                UE_LOG(LogTemp,Display,TEXT("VOYAGER CITY NETWORK AUDIT INTERACT REQUEST net=%d citizen=%s fixture_wait=%.3f distance_cm=%.1f"),Net,*Subject->DisplayName(),FixtureElapsed,FVector::Dist(Explorer->GetActorLocation(),Subject->GetActorLocation()));
+                Explorer->ServerInteract();Advance();return;
+            }
         }
-        if(Elapsed>22.f)Fail(TEXT("NETWORK_DIALOGUE_TARGET"));return;
+        Audit.Subject.Reset();Audit.DialogueFixtureSeenAt=-1.f;return;
     }
     if(TestStage==3)
     {
