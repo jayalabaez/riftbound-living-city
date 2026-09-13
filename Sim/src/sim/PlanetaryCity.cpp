@@ -188,6 +188,14 @@ bool PlanetaryCity::Kill(u32 citizen) {
     c.needs[planetary_detail::N(PlanetaryNeed::Health)] = 1000; c.workMinutes = 0;
     return true;
 }
+bool PlanetaryCity::RelieveNeeds(u32 citizen, u16 food, u16 water, u16 health) {
+    if (citizen >= citizens_.size() || !citizens_[citizen].alive || food > 1000 || water > 1000 || health > 1000) return false;
+    auto& needs = citizens_[citizen].needs;
+    needs[0] = planetary_detail::Lower(needs[0], food);
+    needs[1] = planetary_detail::Lower(needs[1], water);
+    needs[4] = planetary_detail::Lower(needs[4], health);
+    return true;
+}
 bool PlanetaryCity::EmergencyRecovery(u32 citizen) {
     if (citizen >= citizens_.size()) return false;
     auto& c = citizens_[citizen];

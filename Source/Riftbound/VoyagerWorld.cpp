@@ -5,6 +5,7 @@
 #include "VoyagerWildlife.h"
 #include "VoyagerCitizen.h"
 #include "VoyagerVegetation.h"
+#include "VoyagerCosmos.h"
 #include "RiftVisual.h"
 #include "ProceduralMeshComponent.h"
 #include "Async/Async.h"
@@ -193,7 +194,10 @@ namespace
         FVoyagerPatchMesh Result;
         Result.Key = K;
         const int32 P = PatchPlanet(K), F = PatchFace(K), L = PatchLevel(K);
-        const int32 N = PatchResolution, Stride = N + 1;
+        // Coast intersections were visibly triangular when an entire orbital
+        // patch sampled the radial field only 32 times. Keep ground collision
+        // unchanged while sampling distant silhouettes/coastlines more densely.
+        const int32 N = L<=5?96:PatchResolution, Stride = N + 1;
         const double Cells = double(1 << L), Span = 2.0 / Cells;
         const double U0 = -1.0 + PatchX(K) * Span, V0 = -1.0 + PatchY(K) * Span;
         Result.Origin = Voyager::SurfacePoint(System, P, PatchDirection(K));
@@ -262,6 +266,7 @@ void AVoyagerWorld::BeginPlay()
 {
     Super::BeginPlay(); RebuildNow();
     Vegetation=GetWorld()->SpawnActor<AVoyagerVegetation>(FVector::ZeroVector,FRotator::ZeroRotator);
+    Cosmos=GetWorld()->SpawnActor<AVoyagerCosmos>(FVector::ZeroVector,FRotator::ZeroRotator);
     if(HasAuthority())
     {
         FActorSpawnParameters Params;Params.Owner=this;
@@ -274,6 +279,8 @@ void AVoyagerWorld::EndPlay(const EEndPlayReason::Type Reason)
 {
     if(IsValid(Vegetation))Vegetation->Destroy();
     Vegetation=nullptr;
+    if(IsValid(Cosmos))Cosmos->Destroy();
+    Cosmos=nullptr;
     ClearScene();
     Super::EndPlay(Reason);
 }
@@ -537,7 +544,7 @@ void AVoyagerWorld::BuildLighting()
     Atmosphere->SetMobility(EComponentMobility::Movable);
     Atmosphere->TransformMode = ESkyAtmosphereTransformMode::PlanetCenterAtComponentTransform;
     Atmosphere->SetAtmosphereHeight(float(Voyager::AtmosphereHeight / Voyager::CentimetersPerKm));
-    Atmosphere->SetRayleighExponentialDistribution(8.f);
+    Atmosphere->SetRayleighExponentialDistribution(4.8f);
     Atmosphere->SetMieExponentialDistribution(1.2f);
     // These are extinction coefficients per kilometer, not unit multipliers.
     // Earth-like optical depth keeps daylight blue and distant terrain visible.
@@ -547,7 +554,7 @@ void AVoyagerWorld::BuildLighting()
     Atmosphere->MultiScatteringFactor = 1.f;
     Atmosphere->TraceSampleCountScale = 2.f;
     Atmosphere->RegisterComponent();
-    if(auto* CloudBase=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_VoyagerCloudVolume.M_VoyagerCloudVolume")))
+    if(auto* CloudBase=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Cosmos/MI_CosmosWeather.MI_CosmosWeather")))
     {
         Clouds=Component<UVolumetricCloudComponent>(this,TEXT("PlanetaryWeather"),SceneComponents);
         Clouds->SetMobility(EComponentMobility::Movable);
@@ -555,13 +562,18 @@ void AVoyagerWorld::BuildLighting()
         Clouds->SetMaterial(CloudMaterial);
         // The atmosphere floor is 3km beneath nominal terrain, so clouds start 2.2km above it.
         Clouds->SetLayerBottomAltitude(5.2f);Clouds->SetLayerHeight(3.2f);
-        Clouds->SetTracingStartMaxDistance(2000.f);Clouds->SetTracingMaxDistance(160.f);
-        Clouds->SetViewSampleCountScale(1.2f);Clouds->SetShadowViewSampleCountScale(.5f);
+        Clouds->SetTracingStartMaxDistance(20000.f);Clouds->SetTracingMaxDistance(220.f);
+        Clouds->SetViewSampleCountScale(1.5f);Clouds->SetShadowViewSampleCountScale(.6f);
         Clouds->SetShadowTracingDistance(8.f);Clouds->SetReflectionViewSampleCountScale(.2f);
         Clouds->SetSkyLightCloudBottomOcclusion(.25f);
         Clouds->SetVisibleInRealTimeSkyCaptures(true);
         Clouds->SetbUsePerSampleAtmosphericLightTransmittance(true);
         Clouds->RegisterComponent();
+        // Register resolves the component's soft material reference; rebind the
+        // transient runtime instance afterwards so its lifetime is explicit.
+        Clouds->SetMaterial(CloudMaterial);
+        UE_LOG(LogTemp,Display,TEXT("VOYAGER CLOUD BIND material=%s expected=%s visible=%d"),
+            *GetNameSafe(Clouds->GetMaterial()),*GetNameSafe(CloudMaterial),Clouds->IsVisible());
     }
     Skylight = Component<USkyLightComponent>(this, TEXT("PlanetSkylight"), SceneComponents);
     Skylight->SetMobility(EComponentMobility::Movable);
@@ -626,6 +638,23 @@ void AVoyagerWorld::UpdateAtmosphere()
     Atmosphere->SetAtmosphereHeight(float((Voyager::AtmosphereHeight + 300000.0) / Voyager::CentimetersPerKm));
     Atmosphere->SetGroundAlbedo(FColor(90, 95, 85));
     Atmosphere->SetSkyLuminanceFactor(FLinearColor::White);
+    // Rayleigh coefficients preserve blue daylight and reddened grazing paths;
+    // humidity/dust vary Mie scattering without tinting the whole scene cyan.
+    const int32 Climate=Voyager::Biome(BuiltSystem,Nearest);
+    static const float Rayleigh[]={.028f,.023f,.027f,.020f,.029f};
+    static const float Aerosol[]={.0042f,.008f,.0027f,.011f,.005f};
+    static const float MieHeight[]={1.4f,2.0f,1.05f,1.8f,1.55f};
+    Atmosphere->SetRayleighScattering(FLinearColor(.1753f,.4096f,1.f));
+    // The optical ground is below valleys; compensate that 3km offset so the
+    // nominal terrain still receives the intended sea-level density profile.
+    const float RayleighBase=Rayleigh[Climate]*FMath::Exp(3.f/4.8f);
+    const float AerosolBase=Aerosol[Climate]*FMath::Exp(3.f/MieHeight[Climate]);
+    Atmosphere->SetRayleighScatteringScale(RayleighBase);
+    Atmosphere->SetMieScatteringScale(AerosolBase);
+    Atmosphere->SetMieAbsorptionScale(AerosolBase*.11f);
+    Atmosphere->SetMieAnisotropy(.78f);
+    Atmosphere->SetMieExponentialDistribution(MieHeight[Climate]);
+    Atmosphere->SetOtherAbsorptionScale(.001881f);
     if(Clouds&&CloudMaterial)
     {
         const FVector C=Voyager::PlanetCenter(BuiltSystem,Nearest);
@@ -633,10 +662,12 @@ void AVoyagerWorld::UpdateAtmosphere()
         Clouds->SetWorldLocation(C);
         Clouds->SetPlanetRadius(float(Voyager::PlanetRadius(BuiltSystem,Nearest)/Voyager::CentimetersPerKm));
         Clouds->SetGroundAlbedo(Voyager::BiomeColor(Voyager::Biome(BuiltSystem,Nearest)).ToFColor(true));
-        CloudMaterial->SetVectorParameterValue(TEXT("PlanetCenter"),FLinearColor(float(C.X),float(C.Y),float(C.Z),0));
-        CloudMaterial->SetVectorParameterValue(TEXT("SeedOffset"),FLinearColor(float(Seed%97)*.117f,float(Seed%73)*.131f,float(Seed%53)*.109f,0));
-        static const float Coverage[]={.57f,.66f,.58f,.72f,.56f};
-        CloudMaterial->SetScalarParameterValue(TEXT("CoverageStart"),Coverage[Voyager::Biome(BuiltSystem,Nearest)]);
+        // Native cloud shader uses spherical sample altitude and a weather texture
+        // field. These instance controls vary each world's coverage and erosion.
+        static const float Coverage[]={.02f,-.23f,-.08f,-.30f,-.04f};
+        CloudMaterial->SetScalarParameterValue(TEXT("Cloud_GlobalCoverage"),Coverage[Voyager::Biome(BuiltSystem,Nearest)]);
+        CloudMaterial->SetScalarParameterValue(TEXT("Layout_CloudGlobalScale"),192.f+float(Seed%65));
+        CloudMaterial->SetVectorParameterValue(TEXT("Cloud_AlbedoColor"),FLinearColor(.98f,.985f,1.f,.5f));
     }
     for (int32 P = 0; P < AtmosphereShells.Num(); ++P)
         if (AtmosphereShells[P]) AtmosphereShells[P]->SetVisibility(P != Nearest);
@@ -658,10 +689,11 @@ void AVoyagerWorld::BuildBackdrop()
     }
     // SkyAtmosphere draws the physical sun disk; an extra emissive sphere would
     // double it and ignore atmospheric extinction on approach to the horizon.
-    UMaterialInterface* RimBase = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_VoyagerAtmosphere.M_VoyagerAtmosphere"));
+    UMaterialInterface* RimBase = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmos/M_CosmosLimb.M_CosmosLimb"));
     AtmosphereShells.SetNum(Voyager::PlanetCount);
     CloudShells.SetNum(Voyager::PlanetCount);
-    UMaterialInterface* CloudBase=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_VoyagerCloudDistant.M_VoyagerCloudDistant"));
+    UMaterialInterface* CloudBase=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Cosmos/M_CosmosCloudDistant.M_CosmosCloudDistant"));
+    UMaterialInterface* OceanBase=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Cosmos/M_CosmosOcean.M_CosmosOcean"));
     if (!RimBase) return;
     for (int32 P = 0; P < Voyager::PlanetCount; ++P)
     {
@@ -671,7 +703,8 @@ void AVoyagerWorld::BuildBackdrop()
         Shell->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Shell->SetCastShadow(false);
         UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(RimBase, this);
-        Material->SetVectorParameterValue(TEXT("Tint"), Voyager::BiomeColor(Voyager::Biome(BuiltSystem, P)) * .23f + FLinearColor(.09f, .29f, .66f));
+        Material->SetVectorParameterValue(TEXT("Tint"), FLinearColor(.17f,.39f,.86f));
+        Material->SetVectorParameterValue(TEXT("SunDirection"),FLinearColor(-FRotator(-32.f,-47.f,0.f).Vector()));
         Shell->SetMaterial(0, Material);
         Shell->RegisterComponent();
         TArray<FVector> V, N;
@@ -680,7 +713,7 @@ void AVoyagerWorld::BuildBackdrop()
         TArray<FLinearColor> C;
         TArray<FProcMeshTangent> Tangents;
         constexpr int32 Resolution = 48, Stride = Resolution + 1;
-        const double Radius = Voyager::PlanetRadius(BuiltSystem, P) + Voyager::AtmosphereHeight * .4;
+        const double Radius = Voyager::PlanetRadius(BuiltSystem, P) + Voyager::AtmosphereHeight * .16;
         for (int32 F = 0; F < 6; ++F)
         {
             const int32 Base = V.Num();
@@ -709,12 +742,42 @@ void AVoyagerWorld::BuildBackdrop()
             auto* CloudMID=UMaterialInstanceDynamic::Create(CloudBase,this);
             CloudMID->SetVectorParameterValue(TEXT("PlanetCenter"),FLinearColor(float(Center.X),float(Center.Y),float(Center.Z),0));
             CloudMID->SetVectorParameterValue(TEXT("SeedOffset"),FLinearColor(float(Seed%97)*.117f,float(Seed%73)*.131f,float(Seed%53)*.109f,0));
-            static const float Coverage[]={.57f,.66f,.58f,.72f,.56f};
+            static const float Coverage[]={.39f,.56f,.43f,.60f,.41f};
             CloudMID->SetScalarParameterValue(TEXT("CoverageStart"),Coverage[Voyager::Biome(BuiltSystem,P)]);
             Veil->SetMaterial(0,CloudMID);Veil->RegisterComponent();
             for(FVector& Vertex:V)Vertex*=((Voyager::PlanetRadius(BuiltSystem,P)+500000.0)/Radius);
             Veil->CreateMeshSection_LinearColor(0,V,T,N,UV,C,Tangents,false);
             CloudShells[P]=Veil;
+        }
+        // A spherical sea intersects the very same terrain field seen on foot.
+        // It sits 450m below nominal terrain, below the settlement clearings.
+        // Frozen worlds retain ice terrain; only temperate biomes have open water.
+        const int32 Climate=Voyager::Biome(BuiltSystem,P);
+        if(OceanBase&&(Climate==0||Climate==4))
+        {
+            auto* Ocean=Component<UProceduralMeshComponent>(this,FString::Printf(TEXT("PlanetaryOcean%d"),P),SceneComponents);
+            Ocean->SetRelativeLocation(Voyager::PlanetCenter(BuiltSystem,P));Ocean->SetMobility(EComponentMobility::Static);
+            Ocean->SetCollisionEnabled(ECollisionEnabled::NoCollision);Ocean->SetCastShadow(false);
+            auto* OceanMaterial=UMaterialInstanceDynamic::Create(OceanBase,this);
+            OceanMaterial->SetVectorParameterValue(TEXT("Tint"),Climate==0?FLinearColor(.006f,.036f,.060f):FLinearColor(.009f,.029f,.049f));
+            Ocean->SetMaterial(0,OceanMaterial);Ocean->RegisterComponent();
+            TArray<FVector> SeaVertices,SeaNormals;TArray<FVector2D> SeaUV;TArray<int32> SeaTriangles;
+            constexpr int32 SeaResolution=160,SeaStride=SeaResolution+1;
+            const double SeaRadius=Voyager::PlanetRadius(BuiltSystem,P)-45000.0;
+            for(int32 Face=0;Face<6;++Face)
+            {
+                const int32 Base=SeaVertices.Num();
+                for(int32 Y=0;Y<=SeaResolution;++Y)for(int32 X=0;X<=SeaResolution;++X)
+                {
+                    const FVector Up=CubeDirection(Face,-1.0+2.0*X/SeaResolution,-1.0+2.0*Y/SeaResolution);
+                    SeaVertices.Add(Up*SeaRadius);SeaNormals.Add(Up);SeaUV.Add(FVector2D(double(X)/SeaResolution,double(Y)/SeaResolution));
+                }
+                for(int32 Y=0;Y<SeaResolution;++Y)for(int32 X=0;X<SeaResolution;++X)
+                {
+                    const int32 A=Base+Y*SeaStride+X,B=A+1,E=A+SeaStride,D=E+1;SeaTriangles.Append({A,E,B,B,E,D});
+                }
+            }
+            Ocean->CreateMeshSection_LinearColor(0,SeaVertices,SeaTriangles,SeaNormals,SeaUV,C,Tangents,false);
         }
     }
 }

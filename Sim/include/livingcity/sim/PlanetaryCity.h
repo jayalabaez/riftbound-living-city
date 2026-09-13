@@ -103,6 +103,8 @@ public:
     bool SwapResident(PlanetaryCity& destination, u32 citizen, u32 destinationCitizen);
     bool RecordOffense(u32 citizen, PlanetaryOffense offense, u16 evidenceConfidence, u64 eventId);
     bool Damage(u32 citizen, u16 pressure);
+    // Ordered host evidence of an already consumed field ration or medical supply.
+    bool RelieveNeeds(u32 citizen, u16 food, u16 water, u16 health);
     bool Kill(u32 citizen);
     bool EmergencyRecovery(u32 citizen);
 

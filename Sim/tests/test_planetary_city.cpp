@@ -181,3 +181,16 @@ LC_TEST(planetary_city_54000_persistent_people_zero_tick_allocations_and_measure
     u32 count = 0; for (const auto& city : cities) { count += city.CitizenCount(); LC_CHECK(city.ConservationHolds()); }
     LC_CHECK_EQ(count, 54000u);
 }
+
+LC_TEST(planetary_city_field_supplies_restore_needs_without_minting_or_resurrecting) {
+    auto city = TestPlanetaryCity(73); city.SetControlled(1, true);
+    CityMinutes(city, 20); city.Damage(1, 600);
+    const auto before = *city.Citizen(1); const auto money = city.Stats().totalMoneyMinor;
+    LC_CHECK(city.RelieveNeeds(1, 500, 100, 350));
+    LC_CHECK(city.Citizen(1)->needs[0] < before.needs[0]);
+    LC_CHECK_EQ(city.Citizen(1)->needs[4], before.needs[4] - 350);
+    LC_CHECK_EQ(city.Stats().totalMoneyMinor, money);
+    LC_CHECK_FALSE(city.RelieveNeeds(1, 1001, 0, 0));
+    city.Kill(1); LC_CHECK_FALSE(city.RelieveNeeds(1, 500, 100, 1000));
+    LC_CHECK_FALSE(city.Citizen(1)->alive); LC_CHECK(city.ConservationHolds());
+}

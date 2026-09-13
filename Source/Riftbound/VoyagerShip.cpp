@@ -1,5 +1,7 @@
 #include "VoyagerShip.h"
 #include "VoyagerLaw.h"
+#include "VoyagerCosmos.h"
+#include "VoyagerDestruction.h"
 #include "VoyagerCharacter.h"
 #include "VoyagerGameMode.h"
 #include "VoyagerWorld.h"
@@ -146,7 +148,7 @@ namespace
         return BlockingPlanet!=INDEX_NONE;
     }
 
-    bool BuildCruiseRoute(int32 System,const FVector& From,int32 Destination,TArray<FVector>& Route)
+    bool BuildCruiseRoute(int32 System,const FVector& From,int32 Destination,TArray<FVector>& Route,const FVector* Survey=nullptr)
     {
         Route.Empty();
         const int32 Home=Voyager::NearestPlanet(System,From);
@@ -160,7 +162,7 @@ namespace
             Route.Add(RouteStart);
         }
         const int32 FirstPlannedLeg=Route.Num();
-        Route.Add(Voyager::SurfacePoint(System,Destination,FVector::UpVector,Voyager::AtmosphereHeight*1.5));
+        Route.Add(Survey?*Survey:Voyager::SurfacePoint(System,Destination,FVector::UpVector,Voyager::AtmosphereHeight*1.5));
         int32 Leg=FirstPlannedLeg;
         while(Leg<Route.Num())
         {
@@ -240,6 +242,7 @@ void AVoyagerShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 void AVoyagerShip::SetupPlayerInputComponent(UInputComponent* Input)
 {
     Super::SetupPlayerInputComponent(Input);
+    Input->BindKey(EKeys::B,IE_Pressed,this,&AVoyagerShip::ServerSurveyAnomaly);
     Input->BindAxis(TEXT("MoveForward"),this,&AVoyagerShip::Forward);
     Input->BindAxis(TEXT("MoveRight"),this,&AVoyagerShip::Right);
     Input->BindAxis(TEXT("FlightUp"),this,&AVoyagerShip::Lift);
@@ -452,9 +455,11 @@ void AVoyagerShip::SimulateCruise(float D,bool bAuthorityEffects)
             const int32 Planet=NearestPlanetIndex();
             const FVector Up=Voyager::SurfaceNormal(State->SystemSeed,Planet,GetActorLocation());
             SetActorRotation(Voyager::TangentRotation(Up,GetActorForwardVector()));
+            const bool Survey=FVector::DistSquared(GetActorLocation(),VoyagerCosmos::SurveyPoint(State->SystemSeed))<10000;
+            if(Survey)SetActorRotation(FRotationMatrix::MakeFromXZ((VoyagerCosmos::AnomalyCenter(State->SystemSeed)-GetActorLocation()).GetSafeNormal(),Up).Rotator());
             if(bAuthorityEffects)
             {
-                if(auto PC=Cast<AVoyagerController>(GetController()))PC->Notify(TEXT("Cruise complete: 90 km orbit. Hold CTRL to descend toward the surface."));
+                if(auto PC=Cast<AVoyagerController>(GetController()))PC->Notify(Survey?TEXT("Anomaly survey reached. Extreme tidal forces closer to the horizon. TAB + J returns to a planet."):TEXT("Cruise complete: 90 km orbit. Hold CTRL to descend toward the surface."));
                 UE_LOG(LogTemp,Display,TEXT("VOYAGER CRUISE COMPLETE planet=%d altitude=%.2f epoch=%d"),Planet,SurfaceAltitude(),FlightEpoch);
             }
         }
@@ -583,6 +588,18 @@ void AVoyagerShip::ServerSelectTarget_Implementation()
 }
 void AVoyagerShip::ServerWarp_Implementation(){if(CanAct())if(auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())GM->WarpToPlanet(GetController(),TargetPlanet);}
 void AVoyagerShip::ServerNextSystem_Implementation(){if(CanAct())if(auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())GM->NextSystem(GetController());}
+void AVoyagerShip::ServerSurveyAnomaly_Implementation()
+{
+    if(!CanAct())return;
+    if(auto Law=AVoyagerLaw::Find(GetWorld());Law&&Law->IsJailed(GetController()))return;
+    if(bCruising){CancelCruise();return;}
+    auto PC=Cast<AVoyagerController>(GetController());auto State=GetWorld()->GetGameState<AVoyagerState>();if(!State)return;
+    if(bLanded||SurfaceAltitude()<Voyager::AtmosphereHeight){if(PC)PC->Notify(TEXT("Climb above 60 km to plot an anomaly survey. SPACE + SHIFT ascends."));return;}
+    const FVector Survey=VoyagerCosmos::SurveyPoint(State->SystemSeed);
+    if(!BuildCruiseRoute(State->SystemSeed,GetActorLocation(),0,CruiseWaypoints,&Survey)){if(PC)PC->Notify(TEXT("Survey route obstructed. Fly farther from this world."));return;}
+    bCruising=true;CruiseLeg=0;PublishFlightState();ForceNetUpdate();
+    if(PC)PC->Notify(TEXT("Cruise to black hole survey engaged. Steer to cancel; keep clear of the event horizon."));
+}
 
 void AVoyagerShip::ServerShoot_Implementation()
 {
@@ -613,7 +630,9 @@ void AVoyagerShip::ServerShoot_Implementation()
     if(bHit)
     {
         End=Hit.ImpactPoint;float Damage=20.f;if(auto PS=GetPlayerState<AVoyagerPlayerState>())Damage+=PS->Upgrades*5.f;
-        const float Applied=UGameplayStatics::ApplyPointDamage(Hit.GetActor(),Damage,(End-Start).GetSafeNormal(),Hit,GetController(),this,nullptr);
+        float Applied=0;
+        if(Cast<AVoyagerSettlement>(Hit.GetActor())){if(auto Structure=AVoyagerDestruction::Find(GetWorld()))Applied=Structure->DamageHit(Hit,Damage*3,GetController())?Damage:0;}
+        else Applied=UGameplayStatics::ApplyPointDamage(Hit.GetActor(),Damage,(End-Start).GetSafeNormal(),Hit,GetController(),this,nullptr);
         if(Applied>0)ConfirmHit();
     }
     for(TActorIterator<AVoyagerCitizenManager> It(GetWorld());It;++It)

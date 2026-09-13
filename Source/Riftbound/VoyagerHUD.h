@@ -12,6 +12,7 @@ public:
     virtual void DrawHUD() override;
 private:
     void DrawCityPhone(class AVoyagerController* Controller);
+    void DrawBackpack(class AVoyagerController* Controller);
     void DrawCityGuide(class AVoyagerController* Controller);
     double NextGuideSample=0;
     int32 GuideSystem=INDEX_NONE,GuideCity=INDEX_NONE,GuideMode=INDEX_NONE,GuideBuilding=INDEX_NONE;

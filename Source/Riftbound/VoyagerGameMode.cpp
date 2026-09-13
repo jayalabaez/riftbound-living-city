@@ -19,14 +19,38 @@
 
 namespace
 {
-    bool IsVoyagerTest(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityLifeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCrimeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerBuildingAudit"))|| FParse::Param(FCommandLine::Get(),TEXT("VoyagerRealismAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerAITest"))||FParse::Param(FCommandLine::Get(),TEXT("LivingCityIsolationAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityNetAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerLifeAudit"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))||FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"));}
+    bool IsVoyagerTest()
+    {
+        static const TCHAR* Flags[]={TEXT("VoyagerPoliceAudit"),TEXT("VoyagerHuntAudit"),TEXT("VoyagerCosmosAudit"),TEXT("VoyagerDestructionAudit"),TEXT("VoyagerSurvivalAudit"),
+            TEXT("VoyagerCityLifeAudit"),TEXT("VoyagerCrimeAudit"),TEXT("VoyagerBuildingAudit"),TEXT("VoyagerRealismAudit"),TEXT("VoyagerAITest"),TEXT("LivingCityIsolationAudit"),
+            TEXT("VoyagerCityNetAudit"),TEXT("VoyagerCityAudit"),TEXT("VoyagerLifeAudit"),TEXT("VoyagerTest"),TEXT("VoyagerNetTest"),TEXT("VoyagerSurfaceAudit")};
+        for(const TCHAR* Flag:Flags)if(FParse::Param(FCommandLine::Get(),Flag))return true;
+        return false;
+    }
     int32 ArrivalPlanet(int32 System,int32 SavedPlanet)
     {
         if(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNatureVisit")))
             for(int32 Planet=0;Planet<5;++Planet)if(Voyager::Biome(System,Planet)==0)return Planet;
         return SavedPlanet;
     }
-    FString SaveSlot(){return FParse::Param(FCommandLine::Get(),TEXT("VoyagerCityLifeAudit"))?TEXT("Voyager-Automation-CityLife"):FParse::Param(FCommandLine::Get(),TEXT("VoyagerSurfaceAudit"))?TEXT("Voyager-Automation-Surface"):(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest"))?TEXT("Voyager-Automation-Network"):(IsVoyagerTest()?TEXT("Voyager-Automation"):TEXT("Voyager-Expedition")));}
+    FString SaveSlot()
+    {
+        static const TCHAR* NewAudits[]={TEXT("Police"),TEXT("Hunt"),TEXT("Cosmos"),TEXT("Destruction"),TEXT("Survival"),TEXT("CityLife"),TEXT("Surface")};
+        for(const TCHAR* Audit:NewAudits)if(FParse::Param(FCommandLine::Get(),*FString::Printf(TEXT("Voyager%sAudit"),Audit)))return FString::Printf(TEXT("Voyager-Automation-%s"),Audit);
+        if(FParse::Param(FCommandLine::Get(),TEXT("VoyagerNetTest")))return TEXT("Voyager-Automation-Network");
+        return IsVoyagerTest()?TEXT("Voyager-Automation"):TEXT("Voyager-Expedition");
+    }
+    TArray<int32> SafeInventory(const TArray<int32>& Input,bool bLegacy=false)
+    {
+        if(bLegacy||Input.IsEmpty())return VoyagerItems::StartingInventory();
+        TArray<int32> Items;Items.Init(0,int32(EVoyagerItem::Count));
+        for(int32 I=0;I<Items.Num()&&I<Input.Num();++I)Items[I]=FMath::Clamp(Input[I],0,999);
+        return Items;
+    }
+    bool ValidSavedCustody(const UVoyagerSave* Save)
+    {return Save&&FMath::IsFinite(Save->JailSeconds)&&Save->JailSeconds>0&&Save->JailSystem==Save->SystemSeed&&Save->JailPlanet>=0&&Save->JailPlanet<Voyager::PlanetCount&&Save->JailSite>=0&&Save->JailSite<AVoyagerSettlement::SitesPerPlanet;}
+    bool InCustody(AController* C)
+    {if(C)if(auto Law=AVoyagerLaw::Find(C->GetWorld()))return Law->IsJailed(C);return false;}
     void Tell(AController* C,const FString& Message){if(auto PC=Cast<AVoyagerController>(C))PC->Notify(Message);}
     FVector NorthSite(int32 System,int32 Planet,double X,double Y,double Height)
     {return Voyager::SurfacePoint(System,Planet,FVector(X,Y,Voyager::PlanetRadius(System,Planet)).GetSafeNormal(),Height);}
@@ -40,6 +64,7 @@ void AVoyagerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 }
 void AVoyagerPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
+    DOREPLIFETIME(AVoyagerPlayerState,Items);
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerPlayerState,Minerals);DOREPLIFETIME(AVoyagerPlayerState,Discoveries);DOREPLIFETIME(AVoyagerPlayerState,PirateKills);DOREPLIFETIME(AVoyagerPlayerState,Upgrades);DOREPLIFETIME(AVoyagerPlayerState,WantedStars);DOREPLIFETIME(AVoyagerPlayerState,bLawSearching);DOREPLIFETIME(AVoyagerPlayerState,WantedSearchSeconds);
 }
 void AVoyagerPlayerState::AddMinerals(int32 Amount)
@@ -68,15 +93,19 @@ void AVoyagerGameMode::BeginPlay()
 {
     Super::BeginPlay();auto State=GetGameState<AVoyagerState>();
     GetWorld()->GetWorldSettings()->bEnableWorldBoundsChecks=false;
-    if(LoadedSave&&State){State->SystemSeed=FMath::Max(1,LoadedSave->SystemSeed);State->PlanetIndex=FMath::Clamp(LoadedSave->PlanetIndex,0,4);}
-    if(State)State->PlanetIndex=ArrivalPlanet(State->SystemSeed,State->PlanetIndex);
+    if(LoadedSave&&State){State->SystemSeed=FMath::Max(1,LoadedSave->SystemSeed);State->PlanetIndex=FMath::Clamp(LoadedSave->PlanetIndex,0,4);CapturedBuildingDamage=LoadedSave->BuildingDamage;}
+    if(State)State->PlanetIndex=ValidSavedCustody(LoadedSave)?LoadedSave->JailPlanet:ArrivalPlanet(State->SystemSeed,State->PlanetIndex);
     WorldBuilder=GetWorld()->SpawnActor<AVoyagerWorld>(FVector::ZeroVector,FRotator::ZeroRotator);
     GetWorld()->SpawnActor<AVoyagerLaw>();
+    if(auto Destruction=GetWorld()->SpawnActor<AVoyagerDestruction>())Destruction->RestoreFrom(LoadedSave);
     if(auto CityLife=GetWorld()->SpawnActor<AVoyagerCityLife>())CityLife->RestoreFrom(LoadedSave);
     UE_LOG(LogTemp,Display,TEXT("VOYAGER READY system=%d planet=%d mode=%d"),State->SystemSeed,State->PlanetIndex,State->Mode);
 }
 void AVoyagerGameMode::EndPlay(const EEndPlayReason::Type Reason)
 {
+    // Capture the newest authority state before service actors retire. CityLife also
+    // supplies its final source during its own EndPlay; cached additions survive that gap.
+    SaveExpedition(true);
     bEndingPlay=true;
     // Jobs own only copied state/bytes. Join the single writer before another world
     // can create a newer save pipeline for the same slot.
@@ -90,7 +119,7 @@ void AVoyagerGameMode::PreLogin(const FString& Options,const FString& Address,co
 AActor* AVoyagerGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
     const int32 System=LoadedSave?FMath::Max(1,LoadedSave->SystemSeed):1;
-    const int32 Planet=ArrivalPlanet(System,LoadedSave?FMath::Clamp(LoadedSave->PlanetIndex,0,4):0);
+    const int32 Planet=ValidSavedCustody(LoadedSave)?LoadedSave->JailPlanet:ArrivalPlanet(System,LoadedSave?FMath::Clamp(LoadedSave->PlanetIndex,0,4):0);
     if(Starts.IsEmpty())for(int32 I=0;I<4;++I)
     {
         FActorSpawnParameters Params;Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -101,9 +130,18 @@ AActor* AVoyagerGameMode::ChoosePlayerStart_Implementation(AController* Player)
 void AVoyagerGameMode::PostLogin(APlayerController* NewPlayer)
 {
     Super::PostLogin(NewPlayer);
+    const bool bRestoreHost=LoadedSave&&NewPlayer->IsLocalController()&&!bLoadedHost;
     if(auto PS=NewPlayer->GetPlayerState<AVoyagerPlayerState>())
     {
-        if(LoadedSave&&!bLoadedHost){PS->Minerals=LoadedSave->Minerals;PS->PirateKills=LoadedSave->PirateKills;PS->Upgrades=LoadedSave->Upgrades;PS->Visited=LoadedSave->Visited;PS->Discoveries=PS->Visited.Num();bLoadedHost=true;}
+        if(bRestoreHost)
+        {
+            PS->Minerals=FMath::Clamp(LoadedSave->Minerals,0,100000000);PS->PirateKills=FMath::Max(0,LoadedSave->PirateKills);PS->Upgrades=FMath::Clamp(LoadedSave->Upgrades,0,5);
+            PS->Visited=LoadedSave->Visited;PS->Discoveries=PS->Visited.Num();PS->Items=SafeInventory(LoadedSave->Items,LoadedSave->Version<4);bLoadedHost=true;
+            CapturedJailSeconds=ValidSavedCustody(LoadedSave)?LoadedSave->JailSeconds:0;
+            CapturedJailSystem=LoadedSave->JailSystem;CapturedJailPlanet=LoadedSave->JailPlanet;CapturedJailSite=LoadedSave->JailSite;
+            PS->ForceNetUpdate();
+        }
+        else PS->Items=SafeInventory(PS->Items);
     }
     FTimerHandle Handle;TWeakObjectPtr<APlayerController> PlayerRef=NewPlayer;
     GetWorldTimerManager().SetTimer(Handle,FTimerDelegate::CreateWeakLambda(this,[this,PlayerRef]()
@@ -139,6 +177,12 @@ void AVoyagerGameMode::PostLogin(APlayerController* NewPlayer)
         }
         Tell(PC,TEXT("Welcome, Voyager. F scans this planet. E boards your ship. Your expedition autosaves."));
     }),.6f,false);
+    if(bRestoreHost&&ValidSavedCustody(LoadedSave))
+    {
+        // Retry in Tick after the normal arrival/city setup. An early autosave must
+        // retain the loaded sentence until the authority has actually restored it.
+        bPendingCustodyRestore=true;CustodyRestoreController=NewPlayer;
+    }
 }
 AVoyagerShip* AVoyagerGameMode::ShipFor(AController* Pilot)
 {
@@ -155,7 +199,7 @@ void AVoyagerGameMode::Logout(AController* Exiting)
 void AVoyagerGameMode::BoardShip(AVoyagerCharacter* Explorer)
 {
     if(!IsValid(Explorer)||!Explorer->GetController())return;auto State=GetGameState<AVoyagerState>();if(!State||State->bTransitioning)return;
-    auto Pilot=Explorer->GetController();auto Ship=ShipFor(Pilot);if(!Ship)return;
+    auto Pilot=Explorer->GetController();if(InCustody(Pilot)||(bPendingCustodyRestore&&CustodyRestoreController.Get()==Pilot)){Tell(Pilot,TEXT("Ship access is locked until Civic Security releases you."));return;}auto Ship=ShipFor(Pilot);if(!Ship)return;
     if(FVector::Dist(Explorer->GetActorLocation(),Ship->GetActorLocation())>1100){Tell(Pilot,TEXT("Move closer to your ship to board. F highlights the landing area."));return;}
     Pilot->Possess(Ship);Explorer->Destroy();Tell(Pilot,TEXT("SPACE lift off  /  W thrust  /  mouse steer  /  SHIFT boost. Climb to orbit."));
     UE_LOG(LogTemp,Display,TEXT("VOYAGER BOARDED ship=%s"),*Ship->GetName());
@@ -163,7 +207,7 @@ void AVoyagerGameMode::BoardShip(AVoyagerCharacter* Explorer)
 void AVoyagerGameMode::LeaveShip(AVoyagerShip* Ship)
 {
     if(!Ship||!Ship->GetController())return;auto State=GetGameState<AVoyagerState>();if(!State||State->bTransitioning)return;
-    if(!Ship->bLanded)return;auto Pilot=Ship->GetController();FVector Position=Ship->GetActorLocation()-Ship->GetActorRightVector()*520;
+    if(!Ship->bLanded)return;auto Pilot=Ship->GetController();if(InCustody(Pilot))return;FVector Position=Ship->GetActorLocation()-Ship->GetActorRightVector()*520;
     const int32 Planet=Voyager::NearestPlanet(State->SystemSeed,Position);
     const FVector Up=Voyager::SurfaceNormal(State->SystemSeed,Planet,Position);
     Position=Voyager::SurfacePoint(State->SystemSeed,Planet,Up,110);
@@ -190,6 +234,7 @@ void AVoyagerGameMode::LandOnPlanet(AController* Pilot,int32 Planet)
 }
 void AVoyagerGameMode::WarpToPlanet(AController* Pilot,int32 Planet)
 {
+    if(InCustody(Pilot))return;
     auto State=GetGameState<AVoyagerState>();auto Ship=Cast<AVoyagerShip>(Pilot?Pilot->GetPawn():nullptr);
     if(!State||State->bTransitioning||!Ship||Planet<0||Planet>=5)return;
     if(Ship->SurfaceAltitude()<Voyager::AtmosphereHeight){Tell(Pilot,TEXT("Climb above 60 km to engage interplanetary cruise. Hold SPACE + SHIFT to ascend."));return;}
@@ -197,6 +242,9 @@ void AVoyagerGameMode::WarpToPlanet(AController* Pilot,int32 Planet)
 }
 void AVoyagerGameMode::NextSystem(AController* Pilot)
 {
+    if(bPendingCustodyRestore){Tell(Pilot,TEXT("Shared hyperspace is unavailable while a crew member is in custody."));return;}
+    for(FConstPlayerControllerIterator It=GetWorld()->GetPlayerControllerIterator();It;++It)
+        if(InCustody(It->Get())){Tell(Pilot,TEXT("Shared hyperspace is unavailable while a crew member is in custody."));return;}
     auto State=GetGameState<AVoyagerState>();auto Ship=Cast<AVoyagerShip>(Pilot?Pilot->GetPawn():nullptr);
     if(!State||!Ship)return;
     if(Ship->SurfaceAltitude()<Voyager::AtmosphereHeight){Tell(Pilot,TEXT("Reach space above 60 km before jumping to another star."));return;}
@@ -231,6 +279,12 @@ void AVoyagerGameMode::FinishTravel()
 void AVoyagerGameMode::Tick(float D)
 {
     Super::Tick(D);
+    if(bPendingCustodyRestore&&GetWorld()->GetTimeSeconds()>=1.f&&CustodyRestoreController.IsValid())
+        if(auto Law=AVoyagerLaw::Find(GetWorld()))
+        {
+            Law->RestoreCustody(CustodyRestoreController.Get(),LoadedSave);
+            if(Law->IsJailed(CustodyRestoreController.Get()))bPendingCustodyRestore=false;
+        }
     PumpSave(false);
     if(bSaveRequested&&!bEndingPlay&&!SaveEncoding.IsValid()&&!SaveWriting.IsValid()&&FPlatformTime::Seconds()>=NextAutosaveTime)
     {
@@ -277,7 +331,7 @@ void AVoyagerGameMode::RecoverShip(AVoyagerShip* Ship)
 }
 void AVoyagerGameMode::UpgradeShip(AController* Pilot)
 {
-    if(!Pilot)return;auto PS=Pilot->GetPlayerState<AVoyagerPlayerState>();if(!PS)return;
+    if(!Pilot||InCustody(Pilot))return;auto PS=Pilot->GetPlayerState<AVoyagerPlayerState>();if(!PS)return;
     if(PS->Upgrades>=5){Tell(Pilot,TEXT("Your ship is fully upgraded."));return;}
     if(PS->Minerals<75){Tell(Pilot,TEXT("Upgrade requires 75 minerals. Scan planets and mine crystals to earn more."));return;}
     auto Ship=ShipFor(Pilot);if(!Ship)return;
@@ -304,11 +358,11 @@ bool AVoyagerGameMode::StartSave(bool bWaitForCommands,AVoyagerCityLife* SaveSou
 {
     if(SaveEncoding.IsValid()||SaveWriting.IsValid())return false;
     auto State=GetGameState<AVoyagerState>();if(!State)return false;
-    AVoyagerPlayerState* HostProgress=nullptr;
+    AVoyagerPlayerState* HostProgress=nullptr;AController* HostController=nullptr;
     for(FConstPlayerControllerIterator It=GetWorld()->GetPlayerControllerIterator();It;++It)
     {
         auto PC=It->Get();if(PC&&PC->IsLocalController())
-            if(auto PS=PC->GetPlayerState<AVoyagerPlayerState>()){HostProgress=PS;break;}
+            if(auto PS=PC->GetPlayerState<AVoyagerPlayerState>()){HostProgress=PS;HostController=PC;break;}
     }
     if(!HostProgress&&!bHaveCapturedHost)return false;
     auto Save=Cast<UVoyagerSave>(UGameplayStatics::CreateSaveGameObject(UVoyagerSave::StaticClass()));if(!Save)return false;
@@ -321,13 +375,23 @@ bool AVoyagerGameMode::StartSave(bool bWaitForCommands,AVoyagerCityLife* SaveSou
     // City command results/refunds were settled by TryPrepareSave. The game thread is
     // the sole producer, so these cargo fields match the cloned city transaction boundary.
     Save->SystemSeed=State->SystemSeed;Save->PlanetIndex=State->PlanetIndex;
+    if(auto Destruction=AVoyagerDestruction::Find(GetWorld())){Destruction->SaveTo(Save);CapturedBuildingDamage=Save->BuildingDamage;}
+    else Save->BuildingDamage=CapturedBuildingDamage;
     if(HostProgress)
     {
         CapturedMinerals=HostProgress->Minerals;CapturedPirateKills=HostProgress->PirateKills;
         CapturedUpgrades=HostProgress->Upgrades;CapturedVisited=HostProgress->Visited;bHaveCapturedHost=true;
+        CapturedItems=SafeInventory(HostProgress->Items);
+        if(auto Law=bPendingCustodyRestore?nullptr:AVoyagerLaw::Find(GetWorld()))
+        {
+            Law->CaptureCustody(HostController,Save);CapturedJailSeconds=Save->JailSeconds;CapturedJailSystem=Save->JailSystem;
+            CapturedJailPlanet=Save->JailPlanet;CapturedJailSite=Save->JailSite;
+        }
     }
     Save->Minerals=CapturedMinerals;Save->PirateKills=CapturedPirateKills;
     Save->Upgrades=CapturedUpgrades;Save->Visited=CapturedVisited;
+    Save->Items=CapturedItems;Save->JailSeconds=CapturedJailSeconds;Save->JailSystem=CapturedJailSystem;
+    Save->JailPlanet=CapturedJailPlanet;Save->JailSite=CapturedJailSite;
     PendingSave=Save;ActiveSaveSerial=++NextSaveSerial;ActiveSaveSlot=SaveSlot();
     if(!bSaveSystemPrimed)
     {
@@ -380,7 +444,13 @@ void AVoyagerGameMode::RecoverExplorer(AVoyagerCharacter* Explorer)
 {
     if(!IsValid(Explorer)||!Explorer->GetController())return;
     auto C=Explorer->GetController();auto State=GetGameState<AVoyagerState>();if(!State)return;
-    if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->Resolve(C,false);
+    if(auto Law=AVoyagerLaw::Find(GetWorld()))
+    {
+        if(Law->TryArrest(C))return;
+        if(Law->IsJailed(C))
+        {Explorer->Health=100.f;Explorer->ForceNetUpdate();if(auto Life=AVoyagerCityLife::Find(GetWorld()))Life->RecoverPlayer(C);return;}
+        Law->Resolve(C,false);
+    }
     const int32 Planet=Voyager::NearestPlanet(State->SystemSeed,Explorer->GetActorLocation());
     const FVector Up=AVoyagerSettlement::SiteDirection(State->SystemSeed,Planet);
     Explorer->GetCharacterMovement()->StopMovementImmediately();

@@ -2,7 +2,7 @@
   {
     "variant": "Male",
     "source": "Art/Characters/Generated/CitizenMale.gltf",
-    "triangles": 29654,
+    "triangles": 28674,
     "bones": 77,
     "materials": [
       "Skin",
@@ -16,7 +16,8 @@
       "Walk": 1.0,
       "Run": 0.72,
       "Talk": 3.0,
-      "Death": 1.35
+      "Death": 1.35,
+      "Aim": 2.0
     },
     "settings": {
       "morph": "caucasian-male-young",
@@ -28,7 +29,7 @@
   {
     "variant": "Female",
     "source": "Art/Characters/Generated/CitizenFemale.gltf",
-    "triangles": 35082,
+    "triangles": 34102,
     "bones": 77,
     "materials": [
       "Skin",
@@ -42,7 +43,8 @@
       "Walk": 1.0,
       "Run": 0.72,
       "Talk": 3.0,
-      "Death": 1.35
+      "Death": 1.35,
+      "Aim": 2.0
     },
     "settings": {
       "morph": "african-female-young",
@@ -54,7 +56,7 @@
   {
     "variant": "Guard",
     "source": "Art/Characters/Generated/CitizenGuard.gltf",
-    "triangles": 32792,
+    "triangles": 31812,
     "bones": 77,
     "materials": [
       "Skin",
@@ -68,7 +70,8 @@
       "Walk": 1.0,
       "Run": 0.72,
       "Talk": 3.0,
-      "Death": 1.35
+      "Death": 1.35,
+      "Aim": 2.0
     },
     "settings": {
       "morph": "african-male-young",

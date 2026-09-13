@@ -177,6 +177,14 @@ def prepare_characters():
             p,uv,faces=read_obj(path.with_suffix('.obj'))
             mapped,w,hidden=read_proxy(path.with_suffix('.mhclo'),body,raw_weights)
             if len(mapped)!=len(p):raise RuntimeError('Proxy vertex correspondence mismatch '+str(path))
+            if kind=='Eyes':
+                # The CC0 eye proxy includes a separate corneal shell whose UVs
+                # use the atlas' small blue patch. MakeHuman renders that shell
+                # transparently. An opaque UE eye material turned it into a blue
+                # lid over both irises; retain the fitted textured eyeballs and
+                # let their low-roughness surface supply the corneal highlight.
+                faces=[f for f in faces if not all(uv[u,0]>.87 and uv[u,1]<.13 for _,u in f)]
+                if not faces:raise RuntimeError('Eye shell filtering removed the iris mesh')
             delete.update(hidden);pieces.append((kind,mapped,uv,faces,w))
         visible=[face for face in body_faces if not all(c[0] in delete for c in face)]
         pieces.insert(0,('Skin',body,body_uv,visible,raw_weights))
@@ -250,9 +258,44 @@ def prepare_characters():
             global_rest[n]=previous*rest[n]
         animated=['root','spine01','head','upperarm01.L','upperarm01.R','lowerarm01.L','lowerarm01.R',
                   'upperleg01.L','upperleg01.R','lowerleg01.L','lowerleg01.R','foot.L','foot.R']
-        durations={'Idle':3.,'Walk':1.,'Run':.72,'Talk':3.,'Death':1.35}
+        durations={'Idle':3.,'Walk':1.,'Run':.72,'Talk':3.,'Death':1.35,'Aim':2.}
         for clip,duration in durations.items():
             times=np.linspace(0,duration,round(duration*30)+1);channels=[];samplers=[]
+            gait_rotations={};gait_roots=[]
+            if clip in ('Walk','Run'):
+                running=clip=='Run';stride=2.10 if running else 1.24;stance=.39 if running else .58
+                for t in times:
+                    phase=float(t/duration);root_shift=np.asarray([0.,-.09+math.cos(phase*math.tau*2)*.012,0.])
+                    frame={};targets={}
+                    for side,offset in [('L',0.),('R',.5)]:
+                        u=(phase+offset)%1.;half=stride*stance*.5
+                        if u<stance:forward=half-stride*u;lift=0.
+                        else:
+                            swing=(u-stance)/(1-stance);s=swing
+                            # Matching endpoint velocities keep the foot planted
+                            # through toe-off and heel strike as the body moves.
+                            slope=-stride*(1-stance)
+                            forward=(2*s**3-3*s*s+1)*(-half)+(s**3-2*s*s+s)*slope+(-2*s**3+3*s*s)*half+(s**3-s*s)*slope
+                            lift=math.sin(math.pi*s)**2*(.20 if running else .105)
+                        upper='upperleg01.'+side;knee='lowerleg01.'+side;foot='foot.'+side
+                        target=heads[foot]+np.asarray([0.,lift,forward]);targets[side]=target
+                        length=np.linalg.norm(heads[knee]-heads[upper])+np.linalg.norm(heads[foot]-heads[knee])-.004
+                        horizontal=np.linalg.norm((target-heads[upper])[[0,2]])
+                        maximum_hip_y=target[1]+math.sqrt(max(.01,length*length-horizontal*horizontal))
+                        root_shift[1]=min(root_shift[1],maximum_hip_y-heads[upper][1])
+                    for side,target in targets.items():
+                        upper='upperleg01.'+side;knee='lowerleg01.'+side;foot='foot.'+side
+                        hip=heads[upper]+root_shift
+                        thigh=heads[knee]-heads[upper];shin=heads[foot]-heads[knee]
+                        a=float(np.linalg.norm(thigh));b=float(np.linalg.norm(shin));delta=target-hip
+                        distance=min(float(np.linalg.norm(delta)),a+b-.001);direction=delta/np.linalg.norm(delta)
+                        target=hip+direction*distance
+                        along=(a*a-b*b+distance*distance)/(2*distance)
+                        bend=np.asarray([0.,0.,1.]);bend-=direction*np.dot(bend,direction);bend/=np.linalg.norm(bend)
+                        knee_position=hip+direction*along+bend*math.sqrt(max(0.,a*a-along*along))
+                        upper_q=align(thigh,knee_position-hip);lower_world=align(shin,target-knee_position)
+                        frame[upper]=upper_q;frame[knee]=upper_q.inv()*lower_world;frame[foot]=lower_world.inv()
+                    gait_rotations[len(gait_roots)]=frame;gait_roots.append(heads['root']+root_shift)
             rotation_keys={}
             time_accessor=accessor(times,5126,'SCALAR',bounds=True)
             def track(bone,path,values,shape):
@@ -260,13 +303,11 @@ def prepare_characters():
                 channels.append({'sampler':index,'target':{'node':bone_id[bone]+2,'path':path}})
             for n in animated:
                 values=[]
-                for t in times:
+                for frame,t in enumerate(times):
                     phase=t/duration*math.tau;wave=math.sin(phase+(math.pi if n.endswith('.R') else 0));q=rest[n]
                     if clip in ('Walk','Run'):
                         running=clip=='Run'
-                        if n.startswith('upperleg01'):q=Rotation.from_euler('x',wave*(34 if running else 23),degrees=True)*q
-                        elif n.startswith('lowerleg01'):q=Rotation.from_euler('x',-max(0,-wave)*(68 if running else 42),degrees=True)*q
-                        elif n.startswith('foot'):q=Rotation.from_euler('x',max(0,-wave)*16,degrees=True)*q
+                        if n in gait_rotations[frame]:q=gait_rotations[frame][n]
                         elif n.startswith('upperarm01'):q=Rotation.from_euler('x',-wave*(25 if running else 15),degrees=True)*q
                         elif n.startswith('lowerarm01'):q=Rotation.from_euler('x',30 if running else 4,degrees=True)*q
                         elif n=='spine01':q=Rotation.from_euler('yz',[math.sin(phase)*2.2,math.sin(phase)*1.0],degrees=True)*q
@@ -276,6 +317,9 @@ def prepare_characters():
                         elif n.startswith('upperleg01'):q=Rotation.from_euler('x',18*ease,degrees=True)*q
                         elif n.startswith('lowerleg01'):q=Rotation.from_euler('x',-32*ease,degrees=True)*q
                         elif n.startswith('upperarm01'):q=Rotation.from_euler('z',(12 if n.endswith('.L') else -12)*ease,degrees=True)*q
+                    elif clip=='Aim':
+                        if n.startswith('upperarm01'):q=Rotation.from_euler('x',-69 if n.endswith('.R') else -72,degrees=True)*q
+                        elif n.startswith('lowerarm01'):q=Rotation.from_euler('x',-22,degrees=True)*q
                     else:
                         if n=='spine01':q=Rotation.from_euler('x',math.sin(phase)*.7,degrees=True)*q
                         elif n=='head':q=Rotation.from_euler('y',math.sin(phase)*(7 if clip=='Talk' else 2),degrees=True)*q
@@ -285,14 +329,14 @@ def prepare_characters():
                 track(n,'rotation',values,'VEC4')
                 rotation_keys[n]=values
             translations=[]
-            for t in times:
+            for frame,t in enumerate(times):
                 value=heads['root'].copy()
                 if clip=='Death':
                     a=min(1,t/duration);ease=a*a*(3-2*a);value[1]+=(.24-heads['root'][1])*ease;value[2]-=.2*ease
-                elif clip in ('Walk','Run'):value[1]+=abs(math.sin(t/duration*math.tau))*(.024 if clip=='Walk' else .045)
+                elif clip in ('Walk','Run'):value=gait_roots[frame].copy()
                 else:value[1]+=math.sin(t/duration*math.tau)*.003
                 translations.append(value)
-            if clip=='Death':
+            if clip in ('Death','Walk','Run'):
                 # Keep the actual skinned body, clothes and shoes on the floor
                 # throughout the collapse, including the low resting shoulders.
                 # Root translation alone corrects contact without stretching limbs.
@@ -464,7 +508,7 @@ def import_characters():
             if not clip:raise RuntimeError('Unknown animation '+obj.get_name())
             if not audit_only:save(obj)
             clips[clip]=obj.get_path_name()
-        if len(clips)!=5:raise RuntimeError('Expected5 animation clips for '+variant+', got '+str(clips))
+        if len(clips)!=len(record['animations']):raise RuntimeError('Missing animation clips for '+variant+', got '+str(clips))
         for obj in objects:
             if not audit_only and isinstance(obj,(unreal.Skeleton,unreal.PhysicsAsset)):save(obj)
         bounds=mesh.get_bounds()
@@ -474,7 +518,7 @@ def import_characters():
         if not 160<entry['height_cm']<195:raise RuntimeError('Character axis/scale mismatch '+str(entry))
         results.append(entry);unreal.log('VOYAGER CHARACTER READY '+json.dumps(entry))
     REPORT.write_text(json.dumps({'status':'success','characters':results,'source_manifest':'Art/Characters/sources.json'},indent=2))
-    unreal.log('VOYAGER CHARACTERS SUCCESS:3 clothed humanoids,15 clips,3 LODs per mesh')
+    unreal.log('VOYAGER CHARACTERS SUCCESS:3 clothed humanoids,18 clips,3 LODs per mesh')
 
 def main():
     if '--fetch' in sys.argv or '--prepare' in sys.argv:

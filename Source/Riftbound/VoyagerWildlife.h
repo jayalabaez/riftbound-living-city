@@ -5,6 +5,7 @@
 
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
+class UCapsuleComponent;
 
 USTRUCT()
 struct FVoyagerAnimalIdentity
@@ -27,7 +28,7 @@ struct FVoyagerAnimalPose
     UPROPERTY() FVector Velocity=FVector::ZeroVector;
     UPROPERTY() float GaitDistance=0.f;
     UPROPERTY() float ServerTime=0.f;
-    UPROPERTY() uint8 Behavior=0; //0 grazing,1 wandering,2 fleeing.
+    UPROPERTY() uint8 Behavior=0; //0 grazing,1 wandering,2 fleeing,3 dead.
 };
 
 /** An original articulated creature; the server owns behavior and radial motion. */
@@ -41,6 +42,7 @@ public:
     virtual void Tick(float DeltaSeconds) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     virtual FVector GetVelocity() const override { return Pose.Velocity; }
+    virtual float TakeDamage(float Damage,const FDamageEvent& Event,AController* DamageInstigator,AActor* Causer) override;
     void InitializeAnimal(int32 System,int32 Planet,int32 Species,int32 Seed);
     FString SpeciesName() const;
     FString BehaviorName() const;
@@ -48,7 +50,15 @@ public:
     int32 SpeciesIndex() const { return Identity.Species; }
     int32 SystemIndex() const { return Identity.System; }
     bool IsFleeing() const { return Pose.Behavior==2; }
+    bool IsAlive() const { return Health>0.f; }
+    bool IsDead() const { return !IsAlive(); }
+    bool CanHarvest() const { return IsDead()&&!bHarvested; }
+    bool Harvest(AController* Harvester);
+    UPROPERTY(ReplicatedUsing=OnRep_Health) float Health=100.f;
+    UPROPERTY(ReplicatedUsing=OnRep_Health) bool bHarvested=false;
+    UPROPERTY(Replicated) float DeathTime=0.f;
 private:
+    UPROPERTY() TObjectPtr<UCapsuleComponent> HitCapsule;
     UPROPERTY() TObjectPtr<USceneComponent> VisualRoot;
     UPROPERTY() TObjectPtr<USceneComponent> BodyRoot;
     UPROPERTY() TObjectPtr<USceneComponent> NeckPivot;
@@ -62,6 +72,7 @@ private:
     UPROPERTY(ReplicatedUsing=OnRep_Pose) FVoyagerAnimalPose Pose;
     UFUNCTION() void OnRep_Identity();
     UFUNCTION() void OnRep_Pose();
+    UFUNCTION() void OnRep_Health();
     FVector Home=FVector::ZeroVector;
     FVector Destination=FVector::ZeroVector;
     FRandomStream Random;
@@ -69,6 +80,10 @@ private:
     float MovementAccumulator=0.f;
     float CurrentSpeed=0.f;
     float AnimatedNeck=0.f;
+    float DamageFleeUntil=0.f;
+    float DeadFloorOffset=0.f;
+    bool bDeathSettled=false;
+    FVector DamageThreat=FVector::ZeroVector;
     bool bVisualsBuilt=false;
     void BuildVisuals();
     void ClearVisuals();

@@ -6,6 +6,32 @@
 class AVoyagerPlayerState;
 class USphereComponent;
 class USpotLightComponent;
+class AVoyagerCitizen;
+class AVoyagerPoliceUnit;
+class UVoyagerSave;
+
+USTRUCT()
+struct FVoyagerCustodyStatus
+{
+    GENERATED_BODY()
+    UPROPERTY() bool bJailed=false;
+    UPROPERTY() float SecondsRemaining=0;
+    UPROPERTY() FVector CivicLocation=FVector::ZeroVector;
+};
+
+USTRUCT()
+struct FVoyagerCustodyRecord
+{
+    GENERATED_BODY()
+    UPROPERTY() TObjectPtr<AVoyagerPlayerState> Resident;
+    UPROPERTY() float ReleaseTime=0;
+    UPROPERTY() FVector Cell=FVector::ZeroVector;
+    UPROPERTY() FVector Exit=FVector::ZeroVector;
+    UPROPERTY() FVector Up=FVector::UpVector;
+    UPROPERTY() int32 System=1;
+    UPROPERTY() int32 Planet=0;
+    UPROPERTY() int32 Site=0;
+};
 
 USTRUCT()
 struct FVoyagerLawPose
@@ -22,14 +48,39 @@ class RIFTBOUND_API AVoyagerLaw : public AActor
     GENERATED_BODY()
 public:
     AVoyagerLaw();
+    virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
     static AVoyagerLaw* Find(const UWorld* World);
     void ReportCrime(AController* Offender,const FVector& Position,int32 Severity,const FString& Description,AActor* Witness=nullptr);
     void Contact(AController* Offender,const FVector& Position);
     void Resolve(AController* Offender,bool bNotify=true);
     int32 PatrolCount(AController* Offender) const;
     static int32 StarsForHeat(float Heat);
+    bool IsJailed(AController* Controller) const;
+    FVoyagerCustodyStatus GetCustody(AController* Controller) const;
+    FVoyagerCustodyStatus GetResidentCustody(const AVoyagerPlayerState* Resident) const;
+    bool Surrender(AController* Controller);
+    bool TryArrest(AController* Controller,bool bSurrender=false);
+    void CaptureCustody(AController* Controller,UVoyagerSave* Save) const;
+    void RestoreCustody(AController* Controller,const UVoyagerSave* Save);
+    void TickGuard(AVoyagerCitizen* Guard,float DeltaSeconds);
+    bool IsGuardEngaged(const AVoyagerCitizen* Guard) const;
+    APawn* GetGuardTarget(const AVoyagerCitizen* Guard) const;
+    int32 GroundUnitCount(AController* Controller,bool bVehicle=false) const;
+    float GroundDamage() const { return OfficerDamage; }
+    float GroundShotInterval() const { return OfficerShotInterval; }
+    float WarningTime() const { return InitialWarning; }
 private:
+    UPROPERTY(Replicated) TArray<FVoyagerCustodyRecord> Custody;
+    TMap<TWeakObjectPtr<AController>,float> GroundDispatch;
+    TMap<TWeakObjectPtr<AVoyagerPlayerState>,TWeakObjectPtr<AActor>> Cells;
+    TMap<TWeakObjectPtr<AVoyagerCitizen>,float> GuardShots;
+    TMap<TWeakObjectPtr<AVoyagerCitizen>,TWeakObjectPtr<AController>> GuardTargets;
+    float OfficerDamage=9.f,OfficerShotInterval=1.8f,InitialWarning=4.f;
+    float SentenceBase=20.f,SentencePerStar=8.f;
+    void UpdateCustody(float Now);
+    void DispatchGround(AController* Controller,int32 Stars,float Now);
     int32 System=INDEX_NONE;
 };
 

@@ -1,6 +1,7 @@
 #include "VoyagerSettlement.h"
 #include "VoyagerData.h"
 #include "VoyagerGameMode.h"
+#include "VoyagerDestruction.h"
 #include "RiftVisual.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -14,6 +15,13 @@
 
 namespace
 {
+    FVoyagerSettlementRecord* CapturedCity=nullptr;
+    int32 CapturedBuilding=INDEX_NONE;
+    struct FPieceCapture
+    {
+        FPieceCapture(FVoyagerSettlementRecord& City,int32 Building){CapturedCity=&City;CapturedBuilding=Building;City.DamageRevision=0;}
+        ~FPieceCapture(){CapturedCity=nullptr;CapturedBuilding=INDEX_NONE;}
+    };
     constexpr int32 MaxCities = 6;
     constexpr double CoreEnter = 3000000.0;
     constexpr double CoreExit = 3600000.0;
@@ -196,7 +204,15 @@ namespace
     void Add(UInstancedStaticMeshComponent* Mesh, FVector WorldPosition, FVector DimensionsCm,
         FQuat Rotation = FQuat::Identity)
     {
-        Mesh->AddInstance(FTransform(Rotation,WorldPosition - Mesh->GetComponentLocation(),DimensionsCm / 100.0));
+        const FTransform Transform(Rotation,WorldPosition-Mesh->GetComponentLocation(),DimensionsCm/100.0);
+        const int32 Instance=Mesh->AddInstance(Transform);
+        if(CapturedCity&&CapturedCity->BuildingInfo.IsValidIndex(CapturedBuilding))
+        {
+            const auto& Building=CapturedCity->BuildingInfo[CapturedBuilding];
+            FVoyagerBuildingPiece Piece;Piece.Mesh=Mesh;Piece.Instance=Instance;Piece.Building=CapturedBuilding;
+            Piece.Original=Transform;Piece.Height=float(FVector::DotProduct(WorldPosition-Building.Floor,Building.Up));
+            CapturedCity->Pieces.Add(Piece);
+        }
     }
     void GroundStrip(UInstancedStaticMeshComponent* Mesh, const FCityFrame& Frame,
         double X, double Y, double Length, double Width, double Height, bool bAlongY)
@@ -212,6 +228,7 @@ namespace
         Text->SetupAttachment(Owner->GetRootComponent());
         Text->SetRelativeLocationAndRotation(Position,Rotation);
         Text->SetText(FText::FromString(Message));
+        if(CapturedCity)Text->ComponentTags.Add(FName(*FString::Printf(TEXT("Building_%d"),CapturedBuilding)));
         Text->SetHorizontalAlignment(EHorizTextAligment::EHTA_Center);
         Text->SetVerticalAlignment(EVerticalTextAligment::EVRTA_TextCenter);
         Text->SetWorldSize(Size);
@@ -235,8 +252,60 @@ AVoyagerSettlement::AVoyagerSettlement()
     GetRootComponent()->SetMobility(EComponentMobility::Static);
 }
 void AVoyagerSettlement::BeginPlay() { Super::BeginPlay(); Refresh(); }
-void AVoyagerSettlement::Tick(float DeltaSeconds) { Super::Tick(DeltaSeconds); Refresh(); UpdateInteriorLights(); }
+void AVoyagerSettlement::Tick(float DeltaSeconds) { Super::Tick(DeltaSeconds); Refresh(); ApplyDestruction(); UpdateInteriorLights(); }
 void AVoyagerSettlement::EndPlay(const EEndPlayReason::Type Reason) { ClearAll(); Super::EndPlay(Reason); }
+
+bool AVoyagerSettlement::ResolveBuildingHit(const FHitResult& Hit,int32& System,int32& Planet,int32& Site,int32& Building) const
+{
+    const auto* Mesh=Cast<UInstancedStaticMeshComponent>(Hit.GetComponent());
+    if(!Mesh||Hit.Item==INDEX_NONE)return false;
+    for(const auto& Pair:Cities)for(const auto& Piece:Pair.Value.Pieces)
+        if(Piece.Mesh.Get()==Mesh&&Piece.Instance==Hit.Item&&!Piece.bHidden)
+        {System=BuiltSystem;Planet=Pair.Key/SitesPerPlanet;Site=Pair.Key%SitesPerPlanet;Building=Piece.Building;return true;}
+    return false;
+}
+int32 AVoyagerSettlement::VisiblePieceCount(int32 Planet,int32 Site,int32 Building) const
+{
+    int32 Count=0;
+    if(const auto* City=Cities.Find(Planet*SitesPerPlanet+Site))
+        for(const auto& Piece:City->Pieces)if(Piece.Building==Building&&Piece.Mesh.IsValid()&&!Piece.bHidden)++Count;
+    return Count;
+}
+void AVoyagerSettlement::ApplyDestruction()
+{
+    const auto* Damage=AVoyagerDestruction::Find(GetWorld());if(!Damage)return;
+    for(auto& Pair:Cities)
+    {
+        auto& City=Pair.Value;if(City.DamageRevision==Damage->Revision())continue;
+        TSet<UInstancedStaticMeshComponent*> Dirty;
+        for(auto& Piece:City.Pieces)
+        {
+            auto* Mesh=Piece.Mesh.Get();if(!Mesh||!City.BuildingInfo.IsValidIndex(Piece.Building))continue;
+            const auto& Info=City.BuildingInfo[Piece.Building];
+            const auto* State=Damage->FindDamage(BuiltSystem,Pair.Key/SitesPerPlanet,Pair.Key%SitesPerPlanet,Piece.Building);
+            const int32 Floors=AVoyagerDestruction::SurvivingFloors(State,Info.FloorCount);
+            const int32 Level=FMath::Clamp(FMath::FloorToInt(Piece.Height/Info.FloorHeight),0,31);
+            const bool Hidden=(Floors<Info.FloorCount&&Piece.Height>20&&Piece.Height>=Floors*Info.FloorHeight-20)||
+                (State&&Mesh->ComponentHasTag(TEXT("VoyagerGlass"))&&(State->BrokenGlassFloors&(1u<<Level)));
+            if(Hidden==Piece.bHidden)continue;
+            FTransform Transform=Piece.Original;
+            // Keep instance IDs stable for replicated damage and hit resolution.
+            // Removed sections and their collision bodies move below the terrain.
+            if(Hidden){Transform.AddToTranslation(-Info.Up*1000000);Transform.SetScale3D(FVector(.001));}
+            Mesh->UpdateInstanceTransform(Piece.Instance,Transform,false,false,true);Dirty.Add(Mesh);Piece.bHidden=Hidden;
+        }
+        for(auto* Mesh:Dirty)Mesh->MarkRenderStateDirty();
+        for(UActorComponent* Component:City.Details)if(auto* Label=Cast<UTextRenderComponent>(Component))
+            for(int32 Building=0;Building<City.BuildingInfo.Num();++Building)
+                if(Label->ComponentHasTag(FName(*FString::Printf(TEXT("Building_%d"),Building))))
+                {
+                    const auto& Info=City.BuildingInfo[Building];
+                    const int32 Floors=AVoyagerDestruction::SurvivingFloors(Damage->FindDamage(BuiltSystem,Pair.Key/SitesPerPlanet,Pair.Key%SitesPerPlanet,Building),Info.FloorCount);
+                    Label->SetVisibility(Floors>0&&FVector::DotProduct(Label->GetComponentLocation()-Info.Floor,Info.Up)<Floors*Info.FloorHeight);break;
+                }
+        City.DamageRevision=Damage->Revision();
+    }
+}
 
 FVector AVoyagerSettlement::SiteDirection(int32 System, int32 Planet, int32 Site)
 {
@@ -369,6 +438,8 @@ void AVoyagerSettlement::RemoveDetails(FVoyagerSettlementRecord& City)
     City.StreetLights.Empty();
     City.StreetLightPositions.Empty();
     Dispose(this,City.Details);
+    City.Pieces.RemoveAll([](const auto& Piece){return !Piece.Mesh.IsValid();});
+    City.DamageRevision=0;
 }
 void AVoyagerSettlement::UpdateInteriorLights()
 {
@@ -399,6 +470,7 @@ void AVoyagerSettlement::UpdateInteriorLights()
             for(FVector View:Views)
             {
                 const int32 Level=FMath::Clamp(FMath::FloorToInt(FVector::DotProduct(View-B.Floor,B.Up)/RoomHeight),0,B.FloorCount-1);
+                if(auto Damage=AVoyagerDestruction::Find(GetWorld());Damage&&Level>=AVoyagerDestruction::SurvivingFloors(Damage->FindDamage(BuiltSystem,Pair.Key/SitesPerPlanet,Pair.Key%SitesPerPlanet,Index),B.FloorCount))continue;
                 if(SeenFloors.Contains(Level))continue;SeenFloors.Add(Level);
                 const double Distance=FVector::DistSquared(View,B.InteriorPoint+B.Up*(Level*RoomHeight));
                 if(Distance<FMath::Square(10000.0))Candidates.Add({Pair.Key,Index,Distance,Level});
@@ -526,6 +598,7 @@ void AVoyagerSettlement::BuildCity(int32 Key)
         FVoyagerBuildingInfo Info;
         GetBuildingInfo(BuiltSystem,Planet,Site,Index,Info);
         City.BuildingInfo.Add(Info);
+        FPieceCapture Capture(City,Index);
         Add(Base,F.Ground + F.Up * (F.Top + F.Bottom) * .5,FVector(B.Width + 450,B.Depth + 450,F.Top - F.Bottom),F.Rotation);
         const FVector Floor = F.Floor();
         const FVector X = F.Rotation.GetAxisX(), Y = F.Rotation.GetAxisY();
@@ -710,6 +783,7 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
     const TArray<FBuilding> Plan = BuildingPlan(BuiltSystem,Planet,Site);
     for (int32 BuildingIndex = 0; BuildingIndex < Plan.Num(); ++BuildingIndex)
     {
+        FPieceCapture Capture(City,BuildingIndex);
         const FBuilding& B = Plan[BuildingIndex];
         const FBuildingBase F = Foundation(Frame,B);
         const FVector Floor = F.Floor(), X = F.Rotation.GetAxisX(), Y = F.Rotation.GetAxisY();
@@ -718,7 +792,8 @@ void AVoyagerSettlement::BuildDetails(int32 Key)
         for (int32 Corner = 0; Corner < 4; ++Corner)
         {
             const FVector Offset = X * (Corner & 1 ? 1 : -1) * (B.Width * .5 + 8) + Y * (Corner & 2 ? 1 : -1) * (B.Depth * .5 + 8);
-            Add(Frames,Floor + Offset + F.Up * BuildingHeight * .5,FVector(55,55,BuildingHeight),F.Rotation);
+            for(int32 Level=0;Level<Floors;++Level)
+                Add(Frames,Floor+Offset+F.Up*((Level+.5)*RoomHeight),FVector(55,55,RoomHeight),F.Rotation);
         }
         // Mechanical rooftop boxes, ducts, landing markers and narrow entrance canopies.
         Add(Equipment,Floor + F.Up * (BuildingHeight + 170),FVector(B.Width * .31,B.Depth * .26,290),F.Rotation);

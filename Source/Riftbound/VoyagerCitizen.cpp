@@ -171,7 +171,7 @@ void AVoyagerCitizen::BuildNavigation()
     auto Connect=[this](int32 A,int32 B){Navigation[A].Links.AddUnique(B);Navigation[B].Links.AddUnique(A);};
     for(int32 Y=0;Y<9;++Y)for(int32 X=0;X<9;++X)
     {
-        const int32 N=Y*9+X;Navigation[N].Position=AVoyagerSettlement::StreetPoint(Identity.System,Identity.Planet,Identity.Site,X,Y,20.0);
+        const int32 N=Y*9+X;Navigation[N].Position=AVoyagerSettlement::StreetPoint(Identity.System,Identity.Planet,Identity.Site,X,Y,0.0);
         if(X>0)Connect(N,N-1);if(Y>0)Connect(N,N-9);
     }
     int32 Building=0;
@@ -413,6 +413,26 @@ void AVoyagerCitizen::Simulate(float D)
     }
     const float Time=float(SynchronizedTime());const FVector Position=PathPosition;
     const FVector Up=Voyager::SurfaceNormal(Identity.System,Identity.Planet,Position);
+    if(Identity.Role==4)
+    {
+        if(auto Law=AVoyagerLaw::Find(GetWorld()))
+        {
+            Law->TickGuard(this,D);
+            const bool Armed=Law->IsGuardEngaged(this);
+            if(Pose.bArmed!=Armed){Pose.bArmed=Armed;ForceNetUpdate();}
+            if(Armed)
+            {
+                ConversationPartner.Reset();ConversationUntil=0.f;Pose.Activity=Investigate;
+                Pose.Velocity=FVector::ZeroVector;Pose.ServerTime=Time;
+                if(auto Target=Law->GetGuardTarget(this))
+                {
+                    const FVector Facing=FVector::VectorPlaneProject(Target->GetActorLocation()-GetActorLocation(),Up).GetSafeNormal();
+                    if(!Facing.IsNearlyZero())Pose.Rotation=Voyager::TangentRotation(Up,Facing);
+                }
+                SetActorRotation(Pose.Rotation);return;
+            }
+        }
+    }
     if(Pose.bAlarmed&&Time>=AlarmUntil)
     {
         Pose.bAlarmed=false;
@@ -470,6 +490,11 @@ void AVoyagerCitizen::Simulate(float D)
     float Speed=Pose.bAlarmed?(Identity.Role==4?320.f:390.f):(Identity.Role==5?170.f:135.f);
     if(!IsStreetNode(CurrentNode)||!IsStreetNode(NextNode))Speed=FMath::Min(Speed,190.f);
     const FVector Direction=Delta.GetSafeNormal();
+    // Turn at corners before advancing. The previous instantaneous path change
+    // translated a still-sideways mesh across the road for several frames.
+    const FVector TangentDirection=FVector::VectorPlaneProject(Direction,Up).GetSafeNormal();
+    const float FacingAlignment=float(FVector::DotProduct(GetActorForwardVector(),TangentDirection));
+    Speed*=FMath::Clamp((FacingAlignment+.15f)/1.15f,.05f,1.f);
     // Personal space is resolved along the existing path, so yielding cannot
     // steer an inhabitant sideways through a wall or off an entrance ramp.
     for(FConstPlayerControllerIterator It=GetWorld()->GetPlayerControllerIterator();It;++It)
@@ -506,11 +531,11 @@ void AVoyagerCitizen::Simulate(float D)
     const bool bOnStreet=IsStreetNode(CurrentNode)&&IsStreetNode(NextNode);
     // Opposing pedestrians use opposite sides of a street. The authoritative
     // path itself stays on the road graph; this small offset fades out at ramps.
-    const FVector DesiredPassing=bOnStreet&&Step>0.f?FVector::CrossProduct(Up,Direction).GetSafeNormal()*80.f:FVector::ZeroVector;
+    const FVector DesiredPassing=Step<=0.f?PassingOffset:(bOnStreet?FVector::CrossProduct(Up,Direction).GetSafeNormal()*80.f:FVector::ZeroVector);
     PassingOffset=FMath::VInterpTo(PassingOffset,DesiredPassing,D,5.f);
     const FVector BodyPosition=NewPosition+PassingOffset;
     Pose.Velocity=(BodyPosition-Pose.Location)/FMath::Max(D,.001f);Pose.GaitDistance+=float((NewPosition-Position).Size());
-    if(Step>1.f)
+    if(Speed>0.f)
     {
         const FQuat Target=Voyager::TangentRotation(Voyager::SurfaceNormal(Identity.System,Identity.Planet,NewPosition),Direction).Quaternion();
         Pose.Rotation=FQuat::Slerp(GetActorQuat(),Target,1.f-FMath::Exp(-D*9.f)).GetNormalized().Rotator();
@@ -619,7 +644,7 @@ bool AVoyagerCitizenManager::SpawnCitizen(int32 Planet,int32 Site)
     }
     FRandomStream Seed(int32(Voyager::Hash(uint32(Voyager::PlanetSeed(ActiveSystem,Planet))^uint32(Site*7717+Ordinal*104729+5371))&0x7fffffff));
     int32 StartNode=Seed.RandRange(1,7)+Seed.RandRange(1,7)*9;
-    FVector Position=AVoyagerSettlement::StreetPoint(ActiveSystem,Planet,Site,StartNode%9,StartNode/9,20.f);
+    FVector Position=AVoyagerSettlement::StreetPoint(ActiveSystem,Planet,Site,StartNode%9,StartNode/9,0.f);
     // Start the first regulars at actual storefronts instead of hiding everyone
     // deep inside a residence as the city first streams in.
     if(Ordinal<6)
@@ -722,7 +747,7 @@ void AVoyagerCitizen::FinishDeath()
 {
     if(DeathTime>0.f)return;
     ConversationPartner.Reset();ConversationUntil=0.f;
-    DeathTime=FMath::Max(.001f,float(SynchronizedTime()));Pose.Velocity=FVector::ZeroVector;Pose.bAlarmed=false;Route.Empty();Pose.ServerTime=DeathTime;
+    DeathTime=FMath::Max(.001f,float(SynchronizedTime()));Pose.Velocity=FVector::ZeroVector;Pose.bAlarmed=false;Pose.bArmed=false;Route.Empty();Pose.ServerTime=DeathTime;
     OnRep_Health();SetLifeSpan(90.f);
     for(TActorIterator<AVoyagerCitizenManager> It(GetWorld());It;++It){It->RecordDeath(this);It->ReportDisturbance(GetActorLocation());}
 }

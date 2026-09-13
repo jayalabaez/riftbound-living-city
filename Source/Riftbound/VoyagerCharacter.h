@@ -7,6 +7,7 @@
 class UCameraComponent;
 class UAudioComponent;
 class AVoyagerCitizen;
+class AVoyagerAnimal;
 UCLASS()
 class RIFTBOUND_API AVoyagerCharacter : public ACharacter
 {
@@ -33,6 +34,7 @@ public:
     UFUNCTION(Server,Reliable) void ServerTalk(int32 Topic);
     UFUNCTION(Server,Reliable) void ServerEndTalk();
     AVoyagerCitizen* FocusedCitizen() const;
+    AVoyagerAnimal* FocusedAnimal() const;
     UFUNCTION(Server,Reliable) void ServerScan();
     UFUNCTION(Server,Reliable) void ServerMine(FVector_NetQuantizeNormal Direction);
     UFUNCTION(Server,Reliable) void ServerSprint(bool bValue);
@@ -68,13 +70,21 @@ public:
     virtual void Tick(float DeltaSeconds) override;
     virtual void UpdateRotation(float DeltaTime) override;
     virtual void SetupInputComponent() override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    UPROPERTY(Replicated) int32 Magazine=24;
+    UPROPERTY(Replicated) float ReloadRemaining=0.f;
+    UFUNCTION(Server,Reliable) void ServerReload();
+    UFUNCTION(Server,Reliable) void ServerSurrender();
     void ToggleMenu();
     bool bMenuVisible=false;
     bool bCityPhoneVisible=false;
+    bool bBackpackVisible=false;
     int32 CityPhonePage=0;
     int32 CityGuideTarget=1;
     UPROPERTY() FVoyagerCityLifeView CityLifeView;
     void ToggleCityPhone();
+    void ToggleBackpack();
+    UFUNCTION(Server,Reliable) void ServerSurvivalAction(uint8 Action);
     void CityPhonePreviousPage();
     void CityPhoneNextPage();
     void CityPhoneAction(int32 Number);
@@ -108,6 +118,7 @@ private:
     void CityPhoneEight();
     void CloseCityPhone();
     TWeakObjectPtr<APawn> CityPhonePawn;
+    float LastSurvivalAction=-10.f;
     float TestTime=0;
     float StageStarted=0;
     int32 TestStage=0;

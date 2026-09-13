@@ -40,6 +40,7 @@ struct FVoyagerCitizenPose
     UPROPERTY() uint8 Activity=0;
     UPROPERTY() int32 Building=INDEX_NONE;
     UPROPERTY() bool bAlarmed=false;
+    UPROPERTY() bool bArmed=false;
 };
 
 struct FVoyagerCitizenNavNode
@@ -65,6 +66,7 @@ public:
     UPROPERTY(ReplicatedUsing=OnRep_Health) float Health=100.f;
     UPROPERTY(Replicated) float DeathTime=0.f;
     bool IsAlive() const { return Health>0.f; }
+    bool IsSecurityGuard() const { return Identity.Role==4; }
     FString DisplayName() const;
     FString RoleName() const;
     FString ActivityName() const;
@@ -83,6 +85,7 @@ public:
 
 private:
     UPROPERTY() TObjectPtr<USkeletalMeshComponent> CitizenMesh;
+    UPROPERTY() TObjectPtr<USceneComponent> GuardWeapon;
     UPROPERTY() TArray<TObjectPtr<UAnimationAsset>> CharacterAnimations;
     UFUNCTION() void OnRep_Health();
     UPROPERTY() TObjectPtr<USceneComponent> VisualRoot;

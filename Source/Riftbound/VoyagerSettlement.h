@@ -7,6 +7,16 @@
 class UActorComponent;
 class UPrimitiveComponent;
 class UPointLightComponent;
+class UInstancedStaticMeshComponent;
+
+struct FVoyagerBuildingPiece
+{
+    TWeakObjectPtr<UInstancedStaticMeshComponent> Mesh;
+    int32 Instance=0,Building=0;
+    float Height=0;
+    FTransform Original;
+    bool bHidden=false;
+};
 
 /** Positions are in the same double-precision planetary frame as the terrain. */
 struct FVoyagerBuildingInfo
@@ -34,6 +44,8 @@ struct FVoyagerSettlementRecord
     UPROPERTY() TArray<TObjectPtr<UPointLightComponent>> StreetLights;
     TArray<FVoyagerBuildingInfo> BuildingInfo;
     TArray<FVector> StreetLightPositions;
+    TArray<FVoyagerBuildingPiece> Pieces;
+    int32 DamageRevision=0;
     bool bCollisionActive = false;
     int32 Buildings = 0;
 };
@@ -62,6 +74,8 @@ public:
     int32 ActiveCityCount() const { return Cities.Num(); }
     int32 ActiveBuildingCount() const;
     int32 ActiveDetailCount() const;
+    bool ResolveBuildingHit(const FHitResult& Hit,int32& System,int32& Planet,int32& Site,int32& Building) const;
+    int32 VisiblePieceCount(int32 Planet,int32 Site,int32 Building) const;
     static constexpr int32 SitesPerPlanet = 3;
 
 private:
@@ -70,6 +84,7 @@ private:
     void BuildDetails(int32 Key);
     void RemoveDetails(FVoyagerSettlementRecord& City);
     void UpdateInteriorLights();
+    void ApplyDestruction();
     void RemoveCity(int32 Key);
     void ClearAll();
     UPROPERTY() TMap<int32, FVoyagerSettlementRecord> Cities;

@@ -56,6 +56,9 @@ public:
     void RebuildNow();
     static float HeightAt(float X, float Y, int32 Seed);
     int32 ActiveChunkCount() const { return Chunks.Num(); }
+    int32 ActiveAtmospherePlanet() const { return AtmospherePlanet; }
+    const USkyAtmosphereComponent* PhysicalAtmosphere() const { return Atmosphere; }
+    bool HasPlanetaryWeather() const { return Clouds && CloudMaterial; }
     void MarkResourceHarvested(uint64 Key);
 
 private:
@@ -84,6 +87,7 @@ private:
     UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> CloudMaterial;
     UPROPERTY() TObjectPtr<USkyLightComponent> Skylight;
     UPROPERTY() TObjectPtr<class AVoyagerVegetation> Vegetation;
+    UPROPERTY() TObjectPtr<class AVoyagerCosmos> Cosmos;
     UPROPERTY() TArray<TObjectPtr<UProceduralMeshComponent>> AtmosphereShells;
     UPROPERTY() TArray<TObjectPtr<UProceduralMeshComponent>> CloudShells;
     UPROPERTY() TArray<TObjectPtr<UInstancedStaticMeshComponent>> StarFields;

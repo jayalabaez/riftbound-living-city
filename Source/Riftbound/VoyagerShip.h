@@ -90,6 +90,7 @@ public:
     UFUNCTION(Server,Reliable) void ServerSelectTarget();
     UFUNCTION(Server,Reliable) void ServerWarp();
     UFUNCTION(Server,Reliable) void ServerNextSystem();
+    UFUNCTION(Server,Reliable) void ServerSurveyAnomaly();
     UFUNCTION(Server,Unreliable) void ServerShoot();
     UFUNCTION(NetMulticast,Unreliable) void LaserEffect(FVector End,bool bHit);
     UFUNCTION(NetMulticast,Unreliable) void DamageEffect(bool bDestroyed);

@@ -3,14 +3,16 @@
 #include "Animation/AnimationAsset.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/SkeletalMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
 namespace VoyagerCitizenVisual
 {
     constexpr uint8 TalkActivity=8;
-    enum EClip : int32 { Idle,Walk,Run,Talk,Death,Count };
-    const TCHAR* ClipNames[]={TEXT("Idle"),TEXT("Walk"),TEXT("Run"),TEXT("Talk"),TEXT("Death")};
+    enum EClip : int32 { Idle,Walk,Run,Talk,Death,Aim,Count };
+    const TCHAR* ClipNames[]={TEXT("Idle"),TEXT("Walk"),TEXT("Run"),TEXT("Talk"),TEXT("Death"),TEXT("Aim")};
 }
 
 void AVoyagerCitizen::ClearVisuals()
@@ -19,7 +21,7 @@ void AVoyagerCitizen::ClearVisuals()
         if(IsValid(Parts[I]))Parts[I]->DestroyComponent();
     Parts.Empty();Materials.Empty();DetailParts.Empty();
     Hips.Empty();Knees.Empty();Shoulders.Empty();Elbows.Empty();
-    CharacterAnimations.Empty();CitizenMesh=nullptr;
+    CharacterAnimations.Empty();CitizenMesh=nullptr;GuardWeapon=nullptr;
     BodyRoot=nullptr;HeadPivot=nullptr;bVisualsBuilt=false;
 }
 
@@ -66,6 +68,7 @@ void AVoyagerCitizen::BuildVisuals()
             else if(Name.EndsWith(TEXT("_Hair")))Tint=FLinearColor(Appearance.FRandRange(.65f,1.f),Appearance.FRandRange(.64f,.93f),Appearance.FRandRange(.61f,.88f));
             else if(Name.EndsWith(TEXT("_Skin")))Tint=FLinearColor(Appearance.FRandRange(.95f,1.03f),Appearance.FRandRange(.94f,1.02f),Appearance.FRandRange(.93f,1.02f));
             Material->SetVectorParameterValue(TEXT("Tint"),Tint);
+            if(Name.EndsWith(TEXT("_Eyes")))Material->SetScalarParameterValue(TEXT("Roughness"),.24f);
             CitizenMesh->SetMaterial(I,Material);Materials.Add(Material);
         }
     for(int32 I=0;I<VoyagerCitizenVisual::Count;++I)
@@ -78,6 +81,25 @@ void AVoyagerCitizen::BuildVisuals()
     }
     if(CharacterAnimations[VoyagerCitizenVisual::Idle])
         CitizenMesh->PlayAnimation(CharacterAnimations[VoyagerCitizenVisual::Idle],true);
+    if(IsSecurityGuard())
+    {
+        GuardWeapon=NewObject<USceneComponent>(this,TEXT("GuardCarbine"));GuardWeapon->SetupAttachment(VisualRoot);
+        GuardWeapon->RegisterComponent();Parts.Add(GuardWeapon);
+        UMaterialInterface* Base=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Materials/M_Surface.M_Surface"));
+        auto Material=Base?UMaterialInstanceDynamic::Create(Base,this):nullptr;
+        if(Material){Material->SetVectorParameterValue(TEXT("Tint"),FLinearColor(.06f,.075f,.09f));Material->SetScalarParameterValue(TEXT("Roughness"),.42f);Materials.Add(Material);}
+        auto Part=[&](FVector Position,FVector Size)
+        {
+            auto MeshPart=NewObject<UStaticMeshComponent>(this);MeshPart->SetupAttachment(GuardWeapon);
+            MeshPart->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
+            MeshPart->SetRelativeLocation(Position);MeshPart->SetRelativeScale3D(Size/100.f);if(Material)MeshPart->SetMaterial(0,Material);
+            MeshPart->SetCollisionEnabled(ECollisionEnabled::NoCollision);MeshPart->SetCanEverAffectNavigation(false);
+            MeshPart->RegisterComponent();Parts.Add(MeshPart);
+        };
+        Part(FVector(10,0,0),FVector(33,6,9));Part(FVector(-15,0,-2),FVector(20,5,11));
+        Part(FVector(38,0,1),FVector(30,3,3));Part(FVector(16,0,-10),FVector(7,4,16));
+        Part(FVector(12,0,7),FVector(12,4,4));Part(FVector(52,0,1),FVector(5,5,5));
+    }
     bVisualsBuilt=true;bDetailsVisible=true;
     InteractionCapsule->SetRelativeScale3D(FVector(Identity.Scale));
     Animate(0.f);
@@ -95,7 +117,13 @@ void AVoyagerCitizen::Animate(float D)
     else VisualRoot->SetWorldLocation(FMath::VInterpTo(VisualRoot->GetComponentLocation(),RenderAt,D,15.f));
     VisualRoot->SetWorldRotation(D<=0.f?Pose.Rotation.Quaternion():
         FQuat::Slerp(VisualRoot->GetComponentQuat(),Pose.Rotation.Quaternion(),1.f-FMath::Exp(-D*13.f)).GetNormalized());
-    const int32 Clip=!IsAlive()?VoyagerCitizenVisual::Death:
+    if(GuardWeapon)
+    {
+        GuardWeapon->SetVisibility(IsAlive(),true);
+        GuardWeapon->SetRelativeLocation(Pose.bArmed?FVector(28,13,133):FVector(-15,0,126));
+        GuardWeapon->SetRelativeRotation(Pose.bArmed?FRotator::ZeroRotator:FRotator(-65,90,0));
+    }
+    const int32 Clip=!IsAlive()?VoyagerCitizenVisual::Death:Pose.bArmed?VoyagerCitizenVisual::Aim:
         Speed>185.f?VoyagerCitizenVisual::Run:Speed>12.f?VoyagerCitizenVisual::Walk:
         Pose.Activity==VoyagerCitizenVisual::TalkActivity?VoyagerCitizenVisual::Talk:VoyagerCitizenVisual::Idle;
     if(!CharacterAnimations.IsValidIndex(Clip)||!CharacterAnimations[Clip])return;
@@ -110,7 +138,7 @@ void AVoyagerCitizen::Animate(float D)
         Position=FMath::Clamp(float(Time)-DeathTime,0.f,Length);
     else if(Clip==VoyagerCitizenVisual::Walk||Clip==VoyagerCitizenVisual::Run)
     {
-        const float Stride=Clip==VoyagerCitizenVisual::Run?210.f:145.f;
+        const float Stride=(Clip==VoyagerCitizenVisual::Run?210.f:124.f)*Identity.Scale;
         Position=FMath::Fmod((Pose.GaitDistance+Speed*Extrapolation)/Stride,1.f)*Length;
     }
     else Position=float(FMath::Fmod(Time+double(Identity.Ordinal)*.37,double(Length)));

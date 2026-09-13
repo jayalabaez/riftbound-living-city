@@ -149,7 +149,7 @@ namespace
 class FVoyagerCityLifeHost final : public FRunnable
 {
 public:
-    enum class EInput : uint8 { Action,Presence,Controlled,Embodied,Health,Offense,Recovery };
+    enum class EInput : uint8 { Action,Presence,Controlled,Embodied,Health,Offense,Recovery,FieldCare,PlayerDamage };
     struct FInput { EInput Type;int32 City=0,Citizen=0,Value=0,Extra=0;uint64 Id=0;lc::PlanetaryCommand Command; };
     struct FResult {uint64 Id;lc::PlanetaryResult Result;};
     mutable FCriticalSection Mutex;
@@ -160,6 +160,7 @@ public:
     std::atomic<bool> bStopping{false};
     float TickMs=0;
     uint64 NextId=1;
+    uint64 ProcessedInput=0;
     explicit FVoyagerCityLifeHost(int32 System,const TArray<FVoyagerCityArchive>& Saved)
     {
         const auto Config=ReadConfig();Cities.Reserve(CityCount);Inputs.Reserve(512);Results.Reserve(32);
@@ -185,6 +186,11 @@ public:
     uint64 Submit(FInput Input)
     {
         FScopeLock Lock(&Mutex);if(Inputs.Num()>=512)return 0;
+        if(Input.Type==EInput::FieldCare)
+        {
+            const auto* Resident=Cities.IsValidIndex(Input.City)?Cities[Input.City]->Citizen(Input.Citizen):nullptr;
+            if(!Resident||!Resident->alive)return 0;
+        }
         Input.Id=NextId++;Inputs.Add(Input);return Input.Id;
     }
     void Flush()
@@ -218,10 +224,16 @@ public:
                     case EInput::Controlled:City.SetControlled(Input.Citizen,Input.Value!=0);break;
                     case EInput::Embodied:City.SetEmbodied(Input.Citizen,Input.Value!=0);break;
                     case EInput::Health:{const int32 Wanted=FMath::Clamp(100-Input.Value,0,100)*10;const int32 Difference=Wanted-Row->needs[4];if(Difference>0)City.Damage(Input.Citizen,uint16(Difference));break;}
-                    case EInput::Offense:City.RecordOffense(Input.Citizen,Input.Value>=100?lc::PlanetaryOffense::Homicide:Input.Value>=35?lc::PlanetaryOffense::PatrolAttack:lc::PlanetaryOffense::Assault,uint16(Input.Extra),Row->lastEvidenceId+1);break;
+                    // Player damage is relative so queued healing between two hits
+                    // is not overwritten by a later, stale pawn-health value.
+                    case EInput::PlayerDamage:City.Damage(Input.Citizen,uint16(Input.Value));break;
+                    case EInput::Offense:City.RecordOffense(Input.Citizen,Input.Value>=100?lc::PlanetaryOffense::Homicide:Input.Value>=35?lc::PlanetaryOffense::PatrolAttack:Input.Value==25?lc::PlanetaryOffense::PropertyDamage:lc::PlanetaryOffense::Assault,uint16(Input.Extra),Row->lastEvidenceId+1);break;
                     case EInput::Recovery:City.EmergencyRecovery(Input.Citizen);break;
+                    case EInput::FieldCare:City.RelieveNeeds(Input.Citizen,uint16(Input.Value),uint16(Input.Extra&1023),uint16((Input.Extra>>10)&1023));break;
                     }
                 }
+                // BuildView reads this watermark and needs under this same mutex.
+                if(!Inputs.IsEmpty())ProcessedInput=Inputs.Last().Id;
                 Inputs.Reset();for(auto& City:Cities)City->Step();
                 TickMs=float((FPlatformTime::Seconds()-StartTime)*1000.0);
             }
@@ -334,6 +346,7 @@ void AVoyagerCityLife::RefreshSystem(int32 System)
         }
         Host->Capture(ActiveSystem,Archives);Host.Reset();
     }
+    PendingPlayerHealth.Reset();PendingRecovery.Reset();LastCoreHealth.Reset();LastCorePawn.Reset();
     ActiveSystem=System;Host=MoveTemp(NextHost);Host->Start();
     if(ResidentLocations.Num()!=4)ResidentLocations.SetNumZeroed(4);
     for(int32& Key:ResidentLocations)Key=FMath::Clamp(Key,0,CityCount-1);
@@ -371,10 +384,41 @@ void AVoyagerCityLife::ApplyCitizenDamage(int32 System,int32 Planet,int32 Site,i
 {if(Host&&System==ActiveSystem)Host->Submit({FVoyagerCityLifeHost::EInput::Health,Planet*3+Site,Ordinal,HealthRemaining});}
 void AVoyagerCityLife::RecordCrime(AController* Offender,int32 Severity,int32 Confidence)
 {if(Host&&Offender&&PlayerSlots.Contains(Offender))Host->Submit({FVoyagerCityLifeHost::EInput::Offense,PlayerCityKey(Offender),PlayerOrdinal(Offender),Severity,Confidence});}
-void AVoyagerCityLife::ApplyPlayerDamage(AController* Controller,int32 HealthRemaining)
-{if(Host&&Controller&&PlayerSlots.Contains(Controller)){PendingPlayerHealth.Add(Controller,HealthRemaining);Host->Submit({FVoyagerCityLifeHost::EInput::Health,PlayerCityKey(Controller),PlayerOrdinal(Controller),HealthRemaining});}}
+void AVoyagerCityLife::ApplyPlayerDamage(AController* Controller,float DamageApplied,float HealthRemaining)
+{
+    if(!HasAuthority()||!Host||!Controller||!PlayerSlots.Contains(Controller)||!FMath::IsFinite(DamageApplied)||DamageApplied<=0||!FMath::IsFinite(HealthRemaining))return;
+    const int32 Pressure=FMath::Clamp(FMath::RoundToInt(FMath::Min(DamageApplied,100.f)*10.f),1,1000);
+    const FVoyagerCityLifeHost::FInput Input{FVoyagerCityLifeHost::EInput::PlayerDamage,PlayerCityKey(Controller),PlayerOrdinal(Controller),Pressure};
+    uint64 Id=Host->Submit(Input);
+    // Health must not be dropped if the bounded input queue is temporarily full.
+    if(!Id){Host->Flush();Id=Host->Submit(Input);}
+    if(Id)PendingPlayerHealth.Add(Controller,{FMath::Clamp(HealthRemaining,0.f,100.f),Id});
+}
 void AVoyagerCityLife::RecoverPlayer(AController* Controller)
-{if(Host&&Controller&&PlayerSlots.Contains(Controller)){PendingRecovery.Add(Controller);PendingPlayerHealth.Remove(Controller);Host->Submit({FVoyagerCityLifeHost::EInput::Recovery,PlayerCityKey(Controller),PlayerOrdinal(Controller)});}}
+{
+    if(!HasAuthority()||!Host||!Controller||!PlayerSlots.Contains(Controller))return;
+    const FVoyagerCityLifeHost::FInput Input{FVoyagerCityLifeHost::EInput::Recovery,PlayerCityKey(Controller),PlayerOrdinal(Controller)};
+    uint64 Id=Host->Submit(Input);if(!Id){Host->Flush();Id=Host->Submit(Input);}
+    if(Id){PendingPlayerHealth.Remove(Controller);PendingRecovery.Add(Controller,Id);}
+}
+bool AVoyagerCityLife::ApplyFieldCare(AController* Controller,int32 Food,int32 Water,int32 Health)
+{
+    if(!HasAuthority()||!Host||!Controller||!PlayerSlots.Contains(Controller)||Food<0||Food>1000||Water<0||Water>1000||Health<0||Health>1000)return false;
+    auto* Explorer=Cast<AVoyagerCharacter>(Controller->GetPawn());
+    if(!Explorer||!FMath::IsFinite(Explorer->Health)||Explorer->Health<=0.f)return false;
+    if(auto Law=AVoyagerLaw::Find(GetWorld());Law&&Law->IsJailed(Controller))return false;
+    const uint64 Id=Host->Submit({FVoyagerCityLifeHost::EInput::FieldCare,PlayerCityKey(Controller),PlayerOrdinal(Controller),Food,Water|(Health<<10)});
+    if(!Id)return false;
+    if(Health>0)
+    {
+        // The authority pawn already includes every local hit and accepted heal.
+        // Project this accepted command immediately so a following hit cannot use
+        // pre-treatment health and incorrectly trigger emergency recovery.
+        Explorer->Health=FMath::Clamp(Explorer->Health+Health*.1f,0.f,100.f);
+        PendingPlayerHealth.Add(Controller,{Explorer->Health,Id});Explorer->ForceNetUpdate();
+    }
+    return true;
+}
 bool AVoyagerCityLife::AuditConservation(int64& Total,int64& Issued) const
 {
     Total=0;Issued=0;if(!Host)return false;FScopeLock Lock(&Host->Mutex);bool Valid=true;
@@ -392,7 +436,7 @@ FVoyagerCityLifeView AVoyagerCityLife::BuildView(AController* Controller) const
     V.CurrentBuilding=V.bAtCity?AVoyagerSettlement::FindBuildingAt(ActiveSystem,Key/3,Key%3,Position):INDEX_NONE;
     V.CurrentBuildingName=BuildingTitle(V.CurrentBuilding);V.CityName=AVoyagerSettlement::SiteName(ActiveSystem,Key/3,Key%3);
     FScopeLock Lock(&Host->Mutex);const auto& City=*Host->Cities[Key];const auto C=City.Citizen(Ordinal);if(!C)return {};
-    const auto Stats=City.Stats();V.Tick=int64(Stats.tick);V.Population=int32(Stats.living);V.SystemPopulation=ReplicatedPopulation;
+    const auto Stats=City.Stats();V.Tick=int64(Stats.tick);V.ProcessedInput=Host->ProcessedInput;V.Population=int32(Stats.living);V.SystemPopulation=ReplicatedPopulation;
     V.CreditsMinor=City.Balance(Ordinal);V.GovernmentMinor=Stats.governmentMinor;V.WageMinor=City.Config().hourlyWageMinor;
     V.RentMinor=City.Config().dailyRentMinor;V.BillsMinor=C->billsDueMinor;V.FineMinor=C->fineMinor;V.CriminalRecord=int32(C->convictions);
     V.bEmployed=C->work!=lc::kPlanetaryInvalidBuilding;V.bRented=C->home!=lc::kPlanetaryInvalidBuilding;V.bUtilitiesConnected=C->utilitiesConnected;
@@ -419,11 +463,16 @@ void AVoyagerCityLife::HandleAction(AController* Controller,uint8 Action,int32 A
 {
     if(!HasAuthority()||!Host||!Controller||!PlayerSlots.Contains(Controller)||Action>uint8(EVoyagerCityAction::Recycle))return;
     auto PC=Cast<AVoyagerController>(Controller);auto State=GetWorld()->GetGameState<AVoyagerState>();if(!PC||!State||State->bTransitioning)return;
+    if(auto Law=AVoyagerLaw::Find(GetWorld());Law&&Law->IsJailed(Controller)){PC->Notify(TEXT("Civic services resume after your sentence."));return;}
     const double Now=GetWorld()->GetTimeSeconds();if(Now-LastCommandTimes.FindRef(Controller)<.2)return;LastCommandTimes.Add(Controller,Now);
     const auto View=BuildView(Controller);if(!View.bAvailable)return;
     const auto Type=EVoyagerCityAction(Action);
     const bool Remote=Type==EVoyagerCityAction::ConsumeGood;
     if(!Remote&&(!View.bAtCity||!View.bOnFoot)){PC->Notify(TEXT("Land and enter a city building to use this service."));return;}
+    if(!Remote&&View.CurrentBuilding>=0)
+        if(auto Destruction=AVoyagerDestruction::Find(GetWorld()))
+            if(const auto Damage=Destruction->FindDamage(State->SystemSeed,View.CityKey/3,View.CityKey%3,View.CurrentBuilding);Damage&&Damage->Integrity<=0)
+            {PC->Notify(TEXT("This building has collapsed. Visit another branch for city services."));return;}
     lc::PlanetaryCommand Cmd;Cmd.building=uint32(View.CurrentBuilding);Cmd.quantity=1;
     switch(Type)
     {
@@ -527,16 +576,18 @@ void AVoyagerCityLife::Tick(float D)
         const auto View=BuildView(C);Host->Submit({FVoyagerCityLifeHost::EInput::Presence,Key,Ordinal,View.CurrentBuilding});
         if(View.Needs.Num()==9)
         {
-            int32 Health=FMath::Clamp(100-View.Needs[4]/10,0,100);
-            if(const int32* Pending=PendingPlayerHealth.Find(C))
-            {if(Health<=*Pending)PendingPlayerHealth.Remove(C);else Health=FMath::Min(Health,*Pending);}
-            if(PendingRecovery.Contains(C)){if(Health==100)PendingRecovery.Remove(C);else Health=100;}
-            const int32* Previous=LastCoreHealth.Find(C);
+            float Health=FMath::Clamp(100.f-View.Needs[4]*.1f,0.f,100.f);
+            if(const uint64* Recovery=PendingRecovery.Find(C))
+            {if(View.ProcessedInput>=*Recovery)PendingRecovery.Remove(C);else Health=100;}
+            if(const FPendingPlayerHealth* Pending=PendingPlayerHealth.Find(C))
+            {if(View.ProcessedInput>=Pending->CommandId)PendingPlayerHealth.Remove(C);else Health=Pending->Health;}
+            const float* Previous=LastCoreHealth.Find(C);
             const bool ChangedPawn=LastCorePawn.FindRef(C).Get()!=C->GetPawn();
-            if(!Previous||*Previous!=Health||ChangedPawn)
+            const auto Explorer=Cast<AVoyagerCharacter>(C->GetPawn());
+            if(!Previous||*Previous!=Health||ChangedPawn||(Explorer&&!FMath::IsNearlyEqual(Explorer->Health,float(Health))))
             {
                 LastCoreHealth.Add(C,Health);LastCorePawn.Add(C,C->GetPawn());
-                if(auto Explorer=Cast<AVoyagerCharacter>(C->GetPawn()))
+                if(Explorer)
                 {
                     Explorer->Health=float(Health);Explorer->ForceNetUpdate();
                     if(Health<=0)if(auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())GM->RecoverExplorer(Explorer);

@@ -243,6 +243,14 @@ binaries; this is a solo project and locking would only add friction.
 
 ## 5. Enforcement
 
+Voyager 0.9 retains the same module boundary. The pure planetary core receives ordered
+field-care commands and continues to own needs, health, money and citations. Existing
+Riftbound gameplay actors own bounded building integrity, animal combat, wanted response
+and custody. Chaos debris is temporary presentation and never writes into the pure core
+or determines saved structural damage. Original procedural cosmos actors are presentation
+plus a server-owned hazard. This extension is described in D-031 and
+`docs/phases/VOYAGER_FRONTIERS.md`; it is not the planned pure structural-support solver.
+
 Boundaries that are only written down get violated. These run in CI on every commit.
 
 | Check | Enforces | Implementation |

@@ -63,6 +63,8 @@ struct FVoyagerCityLifeView
     UPROPERTY() int32 WorkplaceBuilding=0;
     UPROPERTY() int32 CriminalRecord=0;
     UPROPERTY() int64 Tick=0;
+    // Worker input acknowledgement captured atomically with this snapshot's needs.
+    UPROPERTY() uint64 ProcessedInput=0;
     UPROPERTY() int64 CreditsMinor=0;
     UPROPERTY() int64 WageMinor=0;
     UPROPERTY() int64 RentMinor=0;
@@ -119,8 +121,9 @@ public:
     void HandleAction(AController* Controller,uint8 Action,int32 Argument);
     FVoyagerCityLifeView BuildView(AController* Controller) const;
     void RecordCrime(AController* Offender,int32 Severity,int32 Confidence);
-    void ApplyPlayerDamage(AController* Controller,int32 HealthRemaining);
+    void ApplyPlayerDamage(AController* Controller,float DamageApplied,float HealthRemaining);
     void RecoverPlayer(AController* Controller);
+    bool ApplyFieldCare(AController* Controller,int32 Food,int32 Water,int32 Health);
     bool AuditConservation(int64& Total,int64& Issued) const;
     void SaveTo(UVoyagerSave* Save);
     // Captures matching city/cargo state on the game thread; the returned encoder owns
@@ -136,10 +139,13 @@ private:
     UPROPERTY(Replicated) int32 ReplicatedPopulation=0;
     TMap<TWeakObjectPtr<AController>,int32> PlayerSlots;
     TMap<TWeakObjectPtr<AController>,double> LastCommandTimes;
-    TMap<TWeakObjectPtr<AController>,int32> LastCoreHealth;
+    TMap<TWeakObjectPtr<AController>,float> LastCoreHealth;
     TMap<TWeakObjectPtr<AController>,TWeakObjectPtr<APawn>> LastCorePawn;
-    TMap<TWeakObjectPtr<AController>,int32> PendingPlayerHealth;
-    TSet<TWeakObjectPtr<AController>> PendingRecovery;
+    // Authority projection after accepted damage or care; stale snapshots cannot
+    // replace it before acknowledging the latest command that produced it.
+    struct FPendingPlayerHealth { float Health=100;uint64 CommandId=0; };
+    TMap<TWeakObjectPtr<AController>,FPendingPlayerHealth> PendingPlayerHealth;
+    TMap<TWeakObjectPtr<AController>,uint64> PendingRecovery;
     TArray<int32> ResidentLocations;
     struct FPendingCityAction
     {

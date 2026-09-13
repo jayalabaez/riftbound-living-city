@@ -44,6 +44,17 @@ Double-click **Play Voyager City.cmd** to visit a planetary city, **Play Voyager
 
 ## Validation
 
+Version **0.9.0** adds new police, hunt, survival, cosmos and destruction audits. Their
+scope and current results are recorded in [VOYAGER_FRONTIERS.md](docs/phases/VOYAGER_FRONTIERS.md).
+No paid Fab package is required. Building debris uses the installed engine's native Chaos
+rigid-body path; it does not require Geometry Collection authoring.
+
+`Scripts/Build.ps1` now includes `bootstrap_voyager_cosmos.py` and its material report.
+`/Game/Cosmos` is in the always-cook list. The project's `MI_CosmosWeather` has a hard
+reference to the installed engine cloud material, so its dependencies are collected by
+Unreal's cooker; verify the final package by running the cosmos audit against it. See
+[cosmos/weather provenance](Art/Cosmos/PROVENANCE.md) for the native engine parent path.
+
 `Scripts/Test-LivingCity.ps1` checks the running Unreal client. Voyager has separate city, multiplayer and flight audit scripts in `Scripts/`; see its guide for commands. Unreal checks need the installed engine or an already built package and run locally; GitHub Actions validates the pure simulation, not the graphics client.
 
 Version 0.8.0's integration gate and measured results are tracked in [VOYAGER_CITY_LIFE.md](docs/phases/VOYAGER_CITY_LIFE.md). Earlier successful Voyager or standalone Living City reports do not validate the new economy adapter. Report core tick time separately from rendered frame rate, and distinguish the 54,000 simulated records from the 72-character embodiment cap.
@@ -54,4 +65,4 @@ The final version 0.8.0 build passed 205 pure-core invariants, 55 editor multipl
 
 The public repository starts with a clean source snapshot. Earlier development history remains local because it contained personal save backups and an Android development file-server token. Saves, backups, build outputs and tokens are excluded; Android File Server is disabled. Existing Voyager progress stays on the player's PC.
 
-These are playable prototypes. The original Living City mode still has its separate heightfield and one-good economy. Voyager now has its own eight-good planetary core and city phone using the shared pure module. The larger phase plan remains a roadmap: Mass traffic and large visible crowds, vehicles/transit, mortgages, court/jail simulation, voxel destruction and economic disasters are not part of this integration.
+These are playable prototypes. The original Living City mode still has its separate heightfield and one-good economy. Voyager has an eight-good planetary core, city phone, field inventory, bounded police response/custody and destructible procedural buildings. The larger phase plan remains a roadmap: Mass traffic and large visible crowds, civilian vehicles/transit, mortgages, courts, a prison economy, voxel destruction and economic disasters are not part of this integration.

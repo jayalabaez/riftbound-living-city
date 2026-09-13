@@ -40,11 +40,17 @@ body faces are removed. Skin weights transfer through the same correspondence;
 small facial and toe bones merge to retained parents, leaving 77 crowd bones
 and four influences per vertex. Models use a 178 cm height and a ground pivot.
 
-The Idle, Walk, Run, Talk and Death clips are newly authored by this project.
+The Idle, Walk, Run, Talk, Aim and Death clips are newly authored by this project.
 Death is a non-graphic timed collapse; it does not require networked ragdolls.
 Each collapse keyframe uses the actual skinned body, clothing and shoes to keep
 2 cm of ground clearance, with lowered resting shoulders.
 No downloaded animation or motion-capture performance is used.
+
+Version 0.9 regenerates eye placement/pupils and the walk/run foot targets with pelvis
+motion to reduce sliding and preserve planted feet. The Aim clip supplies a weapon-ready
+guard pose. These remain scripted derivatives of the same credited meshes and rig; no new
+third-party character source or animation pack is introduced. The read-only geometry audit
+is `Scripts/check_voyager_character_geometry.py`.
 
 Unreal imports the generated glTF/bin files as skeletal meshes and animation
 sequences. Native skeletal reduction creates three LODs. Materials provide

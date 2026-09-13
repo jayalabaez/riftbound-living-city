@@ -165,7 +165,7 @@ void AVoyagerHUD::DrawHUD()
             }
         }
         Center(Expedition->bLawSearching?TEXT("SEARCHING LAST KNOWN POSITION"):TEXT("WANTED / PATROL PURSUIT"),VW*.5f,74,.53f,Expedition->bLawSearching?Amber:Red,270);
-        Center(Expedition->bLawSearching?FString::Printf(TEXT("Stay out of sight  /  %.0f s"),Expedition->WantedSearchSeconds):TEXT("Break line of sight or escape in your ship"),VW*.5f,98,.44f,Muted,270);
+        Center(Expedition->bLawSearching?FString::Printf(TEXT("Stay out of sight  /  %.0f s"),Expedition->WantedSearchSeconds):TEXT("G surrender / break line of sight to escape"),VW*.5f,98,.44f,Muted,270);
         for(TActorIterator<AVoyagerPatrolShip> It(GetWorld());It;++It)
         {
             FVector2D Screen;
@@ -225,7 +225,7 @@ void AVoyagerHUD::DrawHUD()
         Panel(VW - 322, VH - 155, 290, 109);
         Text(Explorer->bWeaponMode?TEXT("PULSE SIDEARM"):TEXT("TERRAIN MULTITOOL"), VW - 305, VH - 140, .57f, Muted);
         Text(Explorer->bWeaponMode?TEXT("LMB  FIRE / V  HOLSTER"):TEXT("LMB EXTRACT / V ARM"), VW - 305, VH - 111, .82f, White);
-        Text(TEXT("F  SCAN & DISCOVER"), VW - 305, VH - 76, .63f, Mint);
+        Text(Explorer->bWeaponMode?(PC->ReloadRemaining>0?FString::Printf(TEXT("RELOADING  %.1f s"),PC->ReloadRemaining):FString::Printf(TEXT("%02d / %03d CELLS   R RELOAD"),PC->Magazine,Expedition?Expedition->ItemCount(EVoyagerItem::EnergyCell):0)):TEXT("F SCAN   /   I BACKPACK"), VW - 305, VH - 76, .55f, Mint);
 
         Action = TEXT("EXPLORE  /  SCAN  /  COLLECT");
         SubAction = TEXT("WASD move   -   SHIFT sprint   -   SPACE jump   -   C camera");
@@ -401,7 +401,12 @@ void AVoyagerHUD::DrawHUD()
 
     if(Explorer)
     {
-        if(auto* Citizen=Explorer->FocusedCitizen())
+        if(auto* Animal=Explorer->FocusedAnimal())
+        {
+            Action=TEXT("E  HARVEST MEAT, HIDE AND BONE");
+            SubAction=TEXT("I backpack / cook at your ship or a cafe / craft supplies");
+        }
+        else if(auto* Citizen=Explorer->FocusedCitizen())
         {
             Action=TEXT("E  TALK TO ")+Citizen->DisplayName().ToUpper();
             SubAction=Citizen->RoleName()+TEXT("  /  ")+Citizen->ActivityName();
@@ -424,6 +429,11 @@ void AVoyagerHUD::DrawHUD()
     }
     if (!Action.IsEmpty())
     {
+        if(auto Law=AVoyagerLaw::Find(GetWorld()))
+        {
+            const auto Custody=Law->GetCustody(PC);
+            if(Custody.bJailed){Action=FString::Printf(TEXT("CIVIC CUSTODY  /  %.0f SECONDS"),Custody.SecondsRemaining);SubAction=TEXT("Serving sentence. Your expedition and cargo are retained.");}
+        }
         const float ActionWidth = FMath::Min(790.f, VW - 760.f);
         Panel(CX - ActionWidth * .5f, VH - 149, ActionWidth, 78);
         Center(Action, CX, VH - 132, .77f, Mint, ActionWidth - 28);
@@ -453,7 +463,7 @@ void AVoyagerHUD::DrawHUD()
         Panel(CX - 360, VH - 226, 720, 52);
         Center(PC->Notice, CX, VH - 210, .69f, White, 684);
     }
-    const FString Footer = Ship ? TEXT("WASD  THRUST     MOUSE  STEER     SHIFT  BOOST     SPACE / CTRL  VERTICAL     LMB  FIRE") : TEXT("WASD MOVE   MOUSE LOOK   SHIFT SPRINT   SPACE JUMP   E INTERACT   F SCAN   P PHONE   N CITY GUIDE");
+    const FString Footer = Ship ? TEXT("WASD THRUST   SHIFT BOOST   SPACE / CTRL VERTICAL   LMB FIRE   TAB TARGET   J CRUISE   B ANOMALY   H NEXT STAR") : TEXT("WASD MOVE   SHIFT SPRINT   SPACE JUMP   E INTERACT   V SIDEARM   R RELOAD   I BACKPACK   P PHONE   G SURRENDER");
     Center(Footer, CX, VH - 27, .48f, Muted);
 
     if (Ship && Ship->DamageFeedback > 0)

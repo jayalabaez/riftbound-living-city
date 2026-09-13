@@ -6,6 +6,8 @@
 #include "GameFramework/SaveGame.h"
 #include "Async/Future.h"
 #include "VoyagerCityLife.h"
+#include "VoyagerItems.h"
+#include "VoyagerDestruction.h"
 #include "VoyagerGameMode.generated.h"
 class AVoyagerCharacter;
 class AVoyagerShip;
@@ -32,6 +34,11 @@ class RIFTBOUND_API AVoyagerPlayerState : public APlayerState
 {
     GENERATED_BODY()
 public:
+    UPROPERTY(Replicated) TArray<int32> Items=VoyagerItems::StartingInventory();
+    int32 ItemCount(EVoyagerItem Item) const;
+    bool AddItem(EVoyagerItem Item,int32 Quantity);
+    bool TakeItem(EVoyagerItem Item,int32 Quantity);
+    bool GrantHuntLoot(int32 Meat,int32 Hide,int32 Bone);
     UPROPERTY(Replicated) int32 Minerals=0;
     UPROPERTY(Replicated) int32 Discoveries=0;
     UPROPERTY(Replicated) int32 PirateKills=0;
@@ -52,7 +59,13 @@ class RIFTBOUND_API UVoyagerSave : public USaveGame
 {
     GENERATED_BODY()
 public:
-    UPROPERTY() int32 Version=3;
+    UPROPERTY() int32 Version=4;
+    UPROPERTY() TArray<int32> Items=VoyagerItems::StartingInventory();
+    UPROPERTY() TArray<FVoyagerBuildingDamage> BuildingDamage;
+    UPROPERTY() float JailSeconds=0;
+    UPROPERTY() int32 JailSystem=0;
+    UPROPERTY() int32 JailPlanet=0;
+    UPROPERTY() int32 JailSite=0;
     UPROPERTY() TArray<FVoyagerCityArchive> CityArchives;
     UPROPERTY() TArray<int32> CityResidentLocations;
     UPROPERTY() int32 SystemSeed=1;
@@ -110,6 +123,12 @@ private:
     bool bHaveCapturedHost=false;
     int32 CapturedMinerals=0,CapturedPirateKills=0,CapturedUpgrades=0;
     TArray<int64> CapturedVisited;
+    TArray<int32> CapturedItems=VoyagerItems::StartingInventory();
+    TArray<FVoyagerBuildingDamage> CapturedBuildingDamage;
+    float CapturedJailSeconds=0;
+    int32 CapturedJailSystem=0,CapturedJailPlanet=0,CapturedJailSite=0;
+    bool bPendingCustodyRestore=false;
+    TWeakObjectPtr<APlayerController> CustodyRestoreController;
     bool StartSave(bool bWaitForCommands,AVoyagerCityLife* SaveSource=nullptr);
     bool PumpSave(bool bWait);
     void BeginTravel(int32 Mode,int32 System,int32 Planet,const FString& Label,float Duration,bool WarpOnly=false);

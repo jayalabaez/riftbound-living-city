@@ -1,5 +1,7 @@
 #include "VoyagerCharacter.h"
 #include "VoyagerLaw.h"
+#include "VoyagerPolice.h"
+#include "VoyagerDestruction.h"
 #include "VoyagerGameMode.h"
 #include "VoyagerShip.h"
 #include "VoyagerWorld.h"
@@ -81,6 +83,8 @@ void AVoyagerCharacter::BeginPlay()
 void AVoyagerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerCharacter,Health);DOREPLIFETIME(AVoyagerCharacter,bWeaponMode);}
 bool AVoyagerCharacter::CanAct() const
 {
+    if(Health<=0)return false;
+    if(auto Law=AVoyagerLaw::Find(GetWorld());Law&&Law->IsJailed(Controller))return false;
     auto State=GetWorld()->GetGameState<AVoyagerState>();auto PC=Cast<AVoyagerController>(Controller);return (!State||!State->bTransitioning)&&(!PC||!PC->bMenuVisible);
 }
 void AVoyagerCharacter::SetupPlayerInputComponent(UInputComponent* I)
@@ -100,8 +104,8 @@ void AVoyagerCharacter::ToggleBodycam()
 }
 void AVoyagerCharacter::Forward(float V){if(CanAct())AddMovementInput(GetActorForwardVector(),V);}
 void AVoyagerCharacter::Right(float V){if(CanAct())AddMovementInput(GetActorRightVector(),V);}
-void AVoyagerCharacter::Turn(float V){if(CanAct())AddControllerYawInput(V*.85f);}
-void AVoyagerCharacter::Look(float V){if(CanAct())AddControllerPitchInput(V*.85f);}
+void AVoyagerCharacter::Turn(float V){if(auto PC=Cast<AVoyagerController>(Controller);PC&&!PC->bMenuVisible&&!PC->bCityPhoneVisible)AddControllerYawInput(V*.85f);}
+void AVoyagerCharacter::Look(float V){if(auto PC=Cast<AVoyagerController>(Controller);PC&&!PC->bMenuVisible&&!PC->bCityPhoneVisible)AddControllerPitchInput(V*.85f);}
 void AVoyagerCharacter::StartMine(){if(CanAct())bMining=true;}
 void AVoyagerCharacter::StopMine(){bMining=false;}
 void AVoyagerCharacter::Interact(){if(CanAct())ServerInteract();}
@@ -161,6 +165,22 @@ void AVoyagerCharacter::FaceRotation(FRotator NewControlRotation,float DeltaTime
 }
 FVector AVoyagerCharacter::GetPawnViewLocation() const
 {return GetActorLocation()+GetActorUpVector()*64;}
+AVoyagerAnimal* AVoyagerCharacter::FocusedAnimal() const
+{
+    AVoyagerAnimal* Best=nullptr;double Range=450.0*450.0;
+    const FVector Eye=GetPawnViewLocation();
+    for(TActorIterator<AVoyagerAnimal> It(GetWorld());It;++It)
+    {
+        const double Distance=FVector::DistSquared(GetActorLocation(),It->GetActorLocation());
+        if(!It->CanHarvest()||Distance>=Range)continue;
+        const FVector Target=It->GetActorLocation()+It->GetActorUpVector()*40;
+        if(FVector::DotProduct(GetBaseAimRotation().Vector(),(Target-Eye).GetSafeNormal())<.25)continue;
+        FHitResult Hit;FCollisionQueryParams Query(SCENE_QUERY_STAT(VoyagerHarvestFocus),false,this);Query.AddIgnoredActor(*It);
+        if(GetWorld()->LineTraceSingleByChannel(Hit,Eye,Target,ECC_Visibility,Query))continue;
+        Best=*It;Range=Distance;
+    }
+    return Best;
+}
 AVoyagerCitizen* AVoyagerCharacter::FocusedCitizen() const
 {
     AVoyagerCitizen* Best=nullptr; double RangeSquared=400.0*400.0;
@@ -181,6 +201,7 @@ AVoyagerCitizen* AVoyagerCharacter::FocusedCitizen() const
 void AVoyagerCharacter::ServerInteract_Implementation()
 {
     if(!CanAct())return;
+    if(auto* Animal=FocusedAnimal()){Animal->Harvest(Controller);return;}
     if(auto* Citizen=FocusedCitizen()){TalkPartner=Citizen;ServerTalk_Implementation(0);return;}
     if(auto* GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())GM->BoardShip(this);
 }
@@ -210,13 +231,22 @@ void AVoyagerCharacter::ServerScan_Implementation()
 void AVoyagerCharacter::ServerMine_Implementation(FVector_NetQuantizeNormal Direction)
 {
     if(!CanAct()||Direction.ContainsNaN()||!FMath::IsNearlyEqual(Direction.SizeSquared(),1.f,.02f)||GetWorld()->TimeSeconds-LastServerShot<.19f)return;
+    if(bWeaponMode)
+    {
+        auto PC=Cast<AVoyagerController>(Controller);auto PS=GetPlayerState<AVoyagerPlayerState>();
+        if(!PC||!PS||PC->ReloadRemaining>0)return;
+        if(PC->Magazine<=0){PC->ServerReload();return;}
+        if(!PS->TakeItem(EVoyagerItem::EnergyCell,1)){PC->Notify(TEXT("No energy cells. Open I and craft ammunition with minerals."));return;}
+        --PC->Magazine;PC->ForceNetUpdate();
+    }
     LastServerShot=GetWorld()->TimeSeconds;FVector Start=GetActorLocation()+GetActorUpVector()*64;FHitResult Hit;FCollisionQueryParams Q(SCENE_QUERY_STAT(VoyagerMine),true,this);
     for(TActorIterator<AVoyagerCitizenManager> It(GetWorld());It;++It)It->ReportDisturbance(Start);
     const float Range=bWeaponMode?120000.f:1800.f;
     bool bHit=GetWorld()->LineTraceSingleByChannel(Hit,Start,Start+Direction*Range,ECC_Visibility,Q);bool Success=false;
     AActor* Victim=Hit.GetActor();
-    if(Victim&&(Cast<AVoyagerResource>(Victim)||Cast<AVoyagerCitizen>(Victim)||(bWeaponMode&&(Cast<AVoyagerPatrolShip>(Victim)||Cast<AVoyagerPirate>(Victim)))))
+    if(Victim&&(Cast<AVoyagerResource>(Victim)||Cast<AVoyagerCitizen>(Victim)||(bWeaponMode&&(Cast<AVoyagerAnimal>(Victim)||Cast<AVoyagerPoliceUnit>(Victim)||Cast<AVoyagerPatrolShip>(Victim)||Cast<AVoyagerPirate>(Victim)))))
         Success=UGameplayStatics::ApplyPointDamage(Victim,bWeaponMode?34.f:20.f,Direction,Hit,Controller,this,nullptr)>0;
+    if(bWeaponMode&&Cast<AVoyagerSettlement>(Victim))if(auto Damage=AVoyagerDestruction::Find(GetWorld()))Success=Damage->DamageHit(Hit,80.f,Controller);
     MiningBeam(bHit?Hit.ImpactPoint:Start+Direction*Range,Success);
 }
 void AVoyagerCharacter::MiningBeam_Implementation(FVector End,bool Success)
@@ -249,6 +279,9 @@ void AVoyagerController::SetupInputComponent()
 {
     Super::SetupInputComponent();InputComponent->BindAction("Menu",IE_Pressed,this,&AVoyagerController::ToggleMenu);InputComponent->BindAction("Save",IE_Pressed,this,&AVoyagerController::SaveInput);InputComponent->BindAction("Upgrade",IE_Pressed,this,&AVoyagerController::UpgradeInput);
     InputComponent->BindKey(EKeys::P,IE_Pressed,this,&AVoyagerController::ToggleCityPhone);
+    InputComponent->BindKey(EKeys::I,IE_Pressed,this,&AVoyagerController::ToggleBackpack);
+    InputComponent->BindKey(EKeys::G,IE_Pressed,this,&AVoyagerController::ServerSurrender);
+    InputComponent->BindKey(EKeys::R,IE_Pressed,this,&AVoyagerController::ServerReload);
     InputComponent->BindKey(EKeys::N,IE_Pressed,this,&AVoyagerController::CycleCityGuide);
     InputComponent->BindKey(EKeys::Left,IE_Pressed,this,&AVoyagerController::CityPhonePreviousPage);
     InputComponent->BindKey(EKeys::Right,IE_Pressed,this,&AVoyagerController::CityPhoneNextPage);
@@ -263,6 +296,18 @@ void AVoyagerController::SetupInputComponent()
     InputComponent->BindKey(EKeys::BackSpace,IE_Pressed,this,&AVoyagerController::CloseConversation);
 }
 void AVoyagerController::Notify_Implementation(const FString& Message){Notice=Message;NoticeTime=8.f;}
+void AVoyagerController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerController,Magazine);DOREPLIFETIME(AVoyagerController,ReloadRemaining);}
+void AVoyagerController::ServerSurrender_Implementation()
+{if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->Surrender(this);}
+void AVoyagerController::ServerReload_Implementation()
+{
+    auto Explorer=Cast<AVoyagerCharacter>(GetPawn());auto PS=GetPlayerState<AVoyagerPlayerState>();
+    if(!Explorer||Explorer->Health<=0||!Explorer->bWeaponMode||!PS||Magazine>=24||ReloadRemaining>0)return;
+    if(auto Law=AVoyagerLaw::Find(GetWorld());Law&&Law->IsJailed(this))return;
+    if(PS->ItemCount(EVoyagerItem::EnergyCell)<=0){Notify(TEXT("No energy cells. Craft ammunition in I / backpack."));return;}
+    ReloadRemaining=1.4f;ForceNetUpdate();
+}
 void AVoyagerController::ShowConversation_Implementation(AVoyagerCitizen* Citizen,const FString& Speech)
 {ConversationTarget=Citizen;ConversationSpeech=Speech;ConversationTime=20.f;UVoyagerLocalAI::EnrichConversation(this,Citizen,Speech);}
 void AVoyagerController::TalkGreeting(){if(bCityPhoneVisible){CityPhoneAction(1);return;}if(ConversationTime>0)if(auto* Explorer=Cast<AVoyagerCharacter>(GetPawn()))Explorer->ServerTalk(0);}
@@ -302,7 +347,7 @@ void AVoyagerController::ShowMenu()
       +SVerticalBox::Slot().AutoHeight().Padding(0,14,0,4)[Label(TEXT("Join a host IP  /  shared star system  /  up to 4 players"),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SAssignNew(AddressBox,SEditableTextBox).Text(FText::FromString(TEXT("127.0.0.1"))).Font(FCoreStyle::GetDefaultFontStyle("Regular",16))]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){FString Address=AddressBox->GetText().ToString().TrimStartAndEnd();bool Valid=!Address.IsEmpty();for(TCHAR C:Address)if(!FChar::IsAlnum(C)&&C!=TEXT('.')&&C!=TEXT(':')&&C!=TEXT('-'))Valid=false;if(Valid){HideMenu();ClientTravel(Address,TRAVEL_Absolute);}return FReply::Handled();})[Label(TEXT("CONNECT TO EXPEDITION"),14)]]
-      +SVerticalBox::Slot().AutoHeight().Padding(0,18,0,6)[Label(TEXT("ON FOOT  WASD move / F scan / LMB mine / V sidearm / E interact\nCITY  P phone / arrows pages / 1-8 actions / P or Esc close\nWalk through signed doors / 1-3 dialogue / Backspace end\nFLIGHT  WASD thrust / mouse steer / Space rise / Ctrl descend\nShift boost / LMB lasers / E land below 10 m or exit\nSPACE above 60 km / Tab target / J cruise / H next star\nFly directly into or out of the atmosphere."),11)]
+      +SVerticalBox::Slot().AutoHeight().Padding(0,18,0,6)[Label(TEXT("ON FOOT  WASD move / F scan / LMB mine / V sidearm / E interact\nSURVIVAL  I backpack / 1-8 craft, cook or eat / R reload\nLAW  G surrender near police / wait for release in Civic jail\nCITY  P phone / arrows pages / 1-8 actions / P or Esc close\nWalk through signed doors / 1-3 dialogue / Backspace end\nFLIGHT  WASD thrust / mouse steer / Space rise / Ctrl descend\nShift boost / LMB lasers / E land below 10 m or exit\nSPACE above 60 km / Tab target / J cruise / B black hole / H next star\nFly directly into or out of the atmosphere."),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(10).OnClicked_Lambda([this](){ServerSave();ConsoleCommand(TEXT("quit"));return FReply::Handled();})[Label(TEXT("SAVE AND QUIT"),13)]]
     ]];
     MenuWidget=SNew(SVoyagerMenu).OnClose_Lambda([this](){HideMenu();})[Content];GEngine->GameViewport->AddViewportWidgetContent(MenuWidget.ToSharedRef(),100);
@@ -311,6 +356,8 @@ void AVoyagerController::ShowMenu()
 void AVoyagerController::Tick(float D)
 {
     Super::Tick(D);NoticeTime=FMath::Max(0.f,NoticeTime-D);
+    if(HasAuthority()&&ReloadRemaining>0)
+    {ReloadRemaining=FMath::Max(0.f,ReloadRemaining-D);if(ReloadRemaining==0)if(auto PS=GetPlayerState<AVoyagerPlayerState>())Magazine=FMath::Min(24,PS->ItemCount(EVoyagerItem::EnergyCell));}
     if(bCityPhoneVisible&&(GetPawn()!=CityPhonePawn.Get()||!GetPawn()))CloseCityPhone();
     ConversationTime=FMath::Max(0.f,ConversationTime-D);
     if(ConversationTime>0&&(!ConversationTarget.IsValid()||!ConversationTarget->IsAlive()||!Cast<AVoyagerCharacter>(GetPawn())||
@@ -655,7 +702,7 @@ float AVoyagerCharacter::TakeDamage(float Damage,const FDamageEvent& Event,ACont
     if(!HasAuthority()||Health<=0||!FMath::IsFinite(Damage)||Damage<=0)return 0;
     auto State=GetWorld()->GetGameState<AVoyagerState>();if(State&&State->bTransitioning)return 0;
     const float Applied=FMath::Min(Health,Damage);Health-=Applied;ForceNetUpdate();
-    if(auto Life=AVoyagerCityLife::Find(GetWorld()))Life->ApplyPlayerDamage(Controller,FMath::RoundToInt(Health));
+    if(auto Life=AVoyagerCityLife::Find(GetWorld()))Life->ApplyPlayerDamage(Controller,Applied,Health);
     if(Health<=0)if(auto GM=GetWorld()->GetAuthGameMode<AVoyagerGameMode>())GM->RecoverExplorer(this);
     return Applied;
 }

@@ -3,6 +3,8 @@
 #include "VoyagerGameMode.h"
 #include "VoyagerSettlement.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "VoyagerCharacter.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -47,7 +49,15 @@ AVoyagerAnimal::AVoyagerAnimal()
     // The render hierarchy interpolates in world space while the authoritative
     // actor follows its precise double-coordinate path at20Hz.
     VisualRoot->SetAbsolute(true,true,false);
-    SetActorEnableCollision(false);Tags.Add(TEXT("VoyagerWildlife"));
+    HitCapsule=CreateDefaultSubobject<UCapsuleComponent>(TEXT("AnimalHitBody"));
+    HitCapsule->SetupAttachment(GetRootComponent());HitCapsule->InitCapsuleSize(70.f,145.f);
+    HitCapsule->SetRelativeLocation(FVector(0,0,130));
+    HitCapsule->SetRelativeRotation(FRotator(90,0,0));
+    HitCapsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    HitCapsule->SetCollisionObjectType(ECC_Pawn);HitCapsule->SetCollisionResponseToAllChannels(ECR_Ignore);
+    HitCapsule->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
+    HitCapsule->SetGenerateOverlapEvents(false);HitCapsule->SetCanEverAffectNavigation(false);
+    Tags.Add(TEXT("VoyagerWildlife"));
 }
 
 void AVoyagerAnimal::InitializeAnimal(int32 System,int32 Planet,int32 Species,int32 Seed)
@@ -56,6 +66,8 @@ void AVoyagerAnimal::InitializeAnimal(int32 System,int32 Planet,int32 Species,in
     Identity.System=System;Identity.Planet=FMath::Clamp(Planet,0,Voyager::PlanetCount-1);
     Identity.Species=FMath::Clamp(Species,0,4);Identity.Seed=Seed;
     FRandomStream Appearance(Seed);Identity.Scale=Appearance.FRandRange(.82f,1.15f);Identity.bInitialized=true;
+    Health=Identity.Species==2?150.f:100.f;bHarvested=false;DeathTime=0.f;
+    HitCapsule->SetRelativeScale3D(FVector(Identity.Scale));
     Random.Initialize(Seed);Home=GetActorLocation();Destination=Home;ThinkRemaining=Random.FRandRange(2.f,7.f);
     Pose.Location=Home;Pose.Rotation=GetActorRotation();Pose.Behavior=0;Pose.ServerTime=float(SynchronizedTime());
     if(HasActorBegunPlay())BuildVisuals();ForceNetUpdate();
@@ -70,11 +82,60 @@ void AVoyagerAnimal::BeginPlay()
 void AVoyagerAnimal::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerAnimal,Identity);DOREPLIFETIME(AVoyagerAnimal,Pose);
+    DOREPLIFETIME(AVoyagerAnimal,Health);DOREPLIFETIME(AVoyagerAnimal,bHarvested);DOREPLIFETIME(AVoyagerAnimal,DeathTime);
 }
 
 void AVoyagerAnimal::OnRep_Identity()
 {
+    HitCapsule->SetRelativeScale3D(FVector(Identity.Scale));
     if(HasActorBegunPlay()&&Identity.bInitialized)BuildVisuals();
+}
+
+void AVoyagerAnimal::OnRep_Health()
+{
+    if(bHarvested){HitCapsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);return;}
+    if(!IsAlive())
+    {
+        HitCapsule->SetRelativeLocation(FVector(0,0,52));
+        HitCapsule->SetCapsuleSize(48.f,145.f);
+    }
+}
+
+float AVoyagerAnimal::TakeDamage(float Damage,const FDamageEvent& Event,AController* DamageInstigator,AActor* Causer)
+{
+    if(!HasAuthority()||!Identity.bInitialized||!IsAlive()||!FMath::IsFinite(Damage)||Damage<=0.f)return 0.f;
+    const auto State=GetWorld()->GetGameState<AVoyagerState>();
+    if(!State||State->bTransitioning||State->SystemSeed!=Identity.System)return 0.f;
+    const float Applied=FMath::Min(Health,Damage);Health-=Applied;
+    DamageThreat=Causer?Causer->GetActorLocation():GetActorLocation()-GetActorForwardVector()*500.f;
+    DamageFleeUntil=float(SynchronizedTime())+12.f;Pose.Behavior=2;
+    if(!IsAlive())
+    {
+        DeathTime=FMath::Max(.001f,float(SynchronizedTime()));Pose.Behavior=3;
+        Pose.Velocity=FVector::ZeroVector;CurrentSpeed=0.f;Pose.ServerTime=DeathTime;
+        OnRep_Health();SetLifeSpan(180.f);
+    }
+    ForceNetUpdate();return Applied;
+}
+
+bool AVoyagerAnimal::Harvest(AController* Harvester)
+{
+    if(!HasAuthority()||!CanHarvest()||!IsValid(Harvester)||Harvester->GetWorld()!=GetWorld())return false;
+    auto Pawn=Cast<AVoyagerCharacter>(Harvester->GetPawn());
+    auto Progress=Harvester->GetPlayerState<AVoyagerPlayerState>();
+    auto State=GetWorld()->GetGameState<AVoyagerState>();
+    if(!Pawn||Pawn->Health<=0||!Progress||!State||State->bTransitioning||State->SystemSeed!=Identity.System)return false;
+    if(FVector::DistSquared(Pawn->GetActorLocation(),GetActorLocation())>FMath::Square(450.f))return false;
+    const FVector Up=Voyager::SurfaceNormal(Identity.System,Identity.Planet,GetActorLocation());
+    FCollisionQueryParams Query(SCENE_QUERY_STAT(VoyagerHarvestCarcass),false,Pawn);Query.AddIgnoredActor(this);
+    FHitResult Hit;
+    if(GetWorld()->LineTraceSingleByChannel(Hit,Pawn->GetPawnViewLocation(),GetActorLocation()+Up*55.f,ECC_Visibility,Query))return false;
+    const int32 Meat=Identity.Species==2?5:(Identity.Species==1||Identity.Species==3?2:3);
+    if(!Progress->GrantHuntLoot(Meat,Identity.Species==2?2:1,Identity.Species==2?3:1))return false;
+    // The server commits one atomic inventory grant before marking the carcass
+    // spent. Competing client requests therefore cannot duplicate its contents.
+    bHarvested=true;HitCapsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    SetLifeSpan(12.f);ForceNetUpdate();return true;
 }
 
 void AVoyagerAnimal::OnRep_Pose()
@@ -94,6 +155,7 @@ FString AVoyagerAnimal::SpeciesName() const
 
 FString AVoyagerAnimal::BehaviorName() const
 {
+    if(IsDead())return bHarvested?TEXT("Harvested carcass"):TEXT("Carcass - harvest for meat, hide and bone");
     return Pose.Behavior==2?TEXT("Fleeing"):(Pose.Behavior==1?TEXT("Wandering"):TEXT("Grazing"));
 }
 
@@ -107,7 +169,7 @@ void AVoyagerAnimal::ClearVisuals()
 {
     for(int32 Index=VisualParts.Num()-1;Index>=0;--Index)if(IsValid(VisualParts[Index]))VisualParts[Index]->DestroyComponent();
     VisualParts.Empty();Materials.Empty();LegPivots.Empty();KneePivots.Empty();WingPivots.Empty();
-    BodyRoot=nullptr;NeckPivot=nullptr;TailPivot=nullptr;bVisualsBuilt=false;
+    BodyRoot=nullptr;NeckPivot=nullptr;TailPivot=nullptr;bVisualsBuilt=false;bDeathSettled=false;
 }
 
 void AVoyagerAnimal::BuildVisuals()
@@ -216,7 +278,7 @@ void AVoyagerAnimal::BuildVisuals()
 
 void AVoyagerAnimal::SimulateBehavior(float D)
 {
-    if(!Identity.bInitialized)return;
+    if(!Identity.bInitialized||!IsAlive())return;
     const auto State=GetWorld()->GetGameState<AVoyagerState>();if(!State||State->SystemSeed!=Identity.System||State->bTransitioning)return;
     const FVector Position=GetActorLocation();const FVector Up=Voyager::SurfaceNormal(Identity.System,Identity.Planet,Position);
     APawn* Threat=nullptr;double ClosestThreat=Pose.Behavior==2?FMath::Square(1750.0):FMath::Square(800.0);
@@ -228,10 +290,10 @@ void AVoyagerAnimal::SimulateBehavior(float D)
     }
     FVector Direction=FVector::ZeroVector;float DesiredSpeed=0.f;
     ThinkRemaining-=D;
-    if(Threat)
+    if(Threat||float(SynchronizedTime())<DamageFleeUntil)
     {
         Pose.Behavior=2;ThinkRemaining=Random.FRandRange(2.f,4.f);
-        Direction=FVector::VectorPlaneProject(Position-Threat->GetActorLocation(),Up).GetSafeNormal();
+        Direction=FVector::VectorPlaneProject(Position-(Threat?Threat->GetActorLocation():DamageThreat),Up).GetSafeNormal();
         if(Direction.IsNearlyZero())Direction=GetActorForwardVector();
         DesiredSpeed=Identity.Species==2?570.f:(Identity.Species==4?650.f:850.f);
         Destination=Position+Direction*2500;
@@ -303,6 +365,35 @@ void AVoyagerAnimal::Animate(float D)
     if(FVector::DistSquared(VisualRoot->GetComponentLocation(),RenderLocation)>FMath::Square(5000.f))VisualRoot->SetWorldLocation(RenderLocation);
     else VisualRoot->SetWorldLocation(FMath::VInterpTo(VisualRoot->GetComponentLocation(),RenderLocation,D,12.f));
     VisualRoot->SetWorldRotation(FQuat::Slerp(VisualRoot->GetComponentQuat(),Pose.Rotation.Quaternion(),1.f-FMath::Exp(-D*12.f)).GetNormalized());
+    if(IsDead())
+    {
+        const float Fall=FMath::SmoothStep(0.f,1.f,FMath::Clamp((float(Time)-DeathTime)/.85f,0.f,1.f));
+        // Rotate about the rib cage while its underside settles onto the local
+        // radial ground. The corpse uses the same frame on every client.
+        const float Angle=Fall*PI*.5f;
+        BodyRoot->SetRelativeRotation(FRotator(0,0,Fall*90.f));
+        BodyRoot->SetRelativeLocation(FVector(0,FMath::Sin(Angle)*145.f,0));
+        if(NeckPivot)NeckPivot->SetRelativeRotation(FRotator(-25.f*Fall,0,0));
+        for(int32 I=0;I<LegPivots.Num();++I)
+        {
+            LegPivots[I]->SetRelativeRotation(FRotator((I%2?24.f:-12.f)*Fall,0,0));
+            if(KneePivots.IsValidIndex(I))KneePivots[I]->SetRelativeRotation(FRotator(40.f*Fall,0,0));
+        }
+        if(!bDeathSettled)
+        {
+            double Minimum=TNumericLimits<double>::Max();
+            for(auto Part:VisualParts)
+                if(auto MeshPart=Cast<UStaticMeshComponent>(Part))if(MeshPart->GetStaticMesh())
+                {
+                    const FTransform Relative=MeshPart->GetComponentTransform().GetRelativeTransform(VisualRoot->GetComponentTransform());
+                    Minimum=FMath::Min(Minimum,MeshPart->GetStaticMesh()->GetBoundingBox().TransformBy(Relative).Min.Z);
+                }
+            DeadFloorOffset=Minimum<TNumericLimits<double>::Max()?float(2.0-Minimum):80.f;
+            bDeathSettled=Fall>=1.f;
+        }
+        BodyRoot->AddRelativeLocation(FVector(0,0,DeadFloorOffset));
+        return;
+    }
     const float Breath=FMath::Sin(float(Time)*1.2f+PhaseOffset);
     BodyRoot->SetRelativeLocation(FVector(0,0,Breath*.8f+FMath::Abs(FMath::Sin(Phase))*Moving*4.2f));
     BodyRoot->SetRelativeRotation(FRotator(FMath::Sin(Phase)*Moving*1.6f,0,FMath::Cos(Phase*.5f)*Moving*.8f));
@@ -370,8 +461,9 @@ void AVoyagerWildlifeManager::UpdateCounts()
 {
     Animals.RemoveAll([](const TObjectPtr<AVoyagerAnimal>& Animal){return !IsValid(Animal);});
     PlanetPopulations.Init(0,Voyager::PlanetCount);TSet<int32> Species;
-    for(auto Animal:Animals){if(PlanetPopulations.IsValidIndex(Animal->PlanetIndex()))++PlanetPopulations[Animal->PlanetIndex()];Species.Add(Animal->SpeciesIndex());}
-    Population=Animals.Num();SpeciesPresent=Species.Num();ForceNetUpdate();
+    Population=0;
+    for(auto Animal:Animals)if(Animal->IsAlive()){++Population;if(PlanetPopulations.IsValidIndex(Animal->PlanetIndex()))++PlanetPopulations[Animal->PlanetIndex()];Species.Add(Animal->SpeciesIndex());}
+    SpeciesPresent=Species.Num();ForceNetUpdate();
 }
 
 bool AVoyagerWildlifeManager::SpawnNear(APawn* Explorer,int32 Planet,int32 ExistingNearby)

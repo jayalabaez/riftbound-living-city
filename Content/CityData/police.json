@@ -1,0 +1,7 @@
+{
+  "officer_damage": 9,
+  "officer_shot_interval_seconds": 1.8,
+  "initial_warning_seconds": 4,
+  "sentence_base_seconds": 20,
+  "sentence_per_star_seconds": 8
+}

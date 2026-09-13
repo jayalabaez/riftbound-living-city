@@ -810,3 +810,38 @@ eviction, courts and jail, destructible voxel terrain, hydrology and economic di
 remain future work. The original brief is the roadmap, not the release checklist.
 Validation and measured timings for this integration are tracked separately in
 `docs/phases/VOYAGER_CITY_LIFE.md`; pending checks must not be reported as passed.
+
+## D-031 — Bounded Voyager destruction, survival, police and cosmos — 2026-09-13
+
+The owner's latest request extends the existing Riftbound planetary game with building
+destruction, physical debris, police vehicles and armed officers, jail, hunting/crafting,
+better NPC walking/eyes, atmosphere presentation and black-hole encounters. Version 0.9
+implements these as a bounded extension of Voyager's existing authority and presentation.
+It does not reorder or claim completion of the standalone Living City traffic/disaster phases.
+
+The server owns building integrity and broken-glass flags. Saved damage drives which
+procedural building levels remain; native Chaos rigid bodies provide at most 96 temporary
+debris pieces with radial gravity. Physics does not feed the pure city simulation or decide
+which persistent floors survive. This avoids a new paid dependency, while leaving the
+full pure structural support solver and Geometry Collection fracture for future work.
+
+Existing per-player wanted cases gain street-level hover cruisers, skinned officers,
+armed civic guards and nearby patrol ships. Authority validates observation, weapon traces,
+surrender and timed custody. The host's remaining sentence saves with the expedition;
+joining-player cases remain session state. Shared hyperspace cannot carry a detained crew
+member out of custody. Healthy surrender does not trigger paid medical recovery.
+
+Field supplies use bounded replicated stacks and atomic server-side recipes. Hunting grants
+each eligible carcass once after range, visibility and capacity checks; food and medicine
+use the shared pure city health/needs path. The expedition wrapper now saves those item
+stacks and building deltas alongside city archives, with caches for service/controller
+teardown. Old saves keep their progress and receive starting energy cells.
+
+Black-hole geometry and distant orbital cloud materials are original implementations.
+Volume weather uses `MI_CosmosWeather`, a project instance of the installed Unreal cloud
+material, alongside native atmosphere/cloud components. Engine content is credited
+separately in `Art/Cosmos/PROVENANCE.md`. The anomaly's dark horizon, disk, halo and hazard are
+gameplay/visual approximations, not general-relativistic ray tracing. No paid Fab assets
+or plugins are purchased or redistributed for this pass. Existing CC0 character and nature
+credits remain applicable. Current evidence and explicit exclusions live in
+`docs/phases/VOYAGER_FRONTIERS.md`; prior release results do not validate the new features.

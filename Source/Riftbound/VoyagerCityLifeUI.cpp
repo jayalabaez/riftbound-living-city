@@ -25,6 +25,7 @@ const TCHAR* CityGuideName(int32 Target)
 
 void AVoyagerController::ToggleCityPhone()
 {
+    if(bBackpackVisible&&bCityPhoneVisible){bBackpackVisible=false;return;}
     if(bCityPhoneVisible){CloseCityPhone();return;}
     if(!IsLocalController()||bMenuVisible||!GetPawn())return;
     CloseConversation();
@@ -48,6 +49,7 @@ void AVoyagerController::ToggleCityPhone()
 
 void AVoyagerController::CloseCityPhone()
 {
+    bBackpackVisible=false;
     if(!bCityPhoneVisible)return;
     if(CityPhonePawn.IsValid()&&CityPhonePawn.Get()==GetPawn())CityPhonePawn->EnableInput(this);
     CityPhonePawn.Reset();bCityPhoneVisible=false;bMenuVisible=false;
@@ -55,8 +57,8 @@ void AVoyagerController::CloseCityPhone()
     FlushPressedKeys();
 }
 
-void AVoyagerController::CityPhonePreviousPage(){if(bCityPhoneVisible)CityPhonePage=(CityPhonePage+4)%5;}
-void AVoyagerController::CityPhoneNextPage(){if(bCityPhoneVisible)CityPhonePage=(CityPhonePage+1)%5;}
+void AVoyagerController::CityPhonePreviousPage(){if(bCityPhoneVisible&&!bBackpackVisible)CityPhonePage=(CityPhonePage+4)%5;}
+void AVoyagerController::CityPhoneNextPage(){if(bCityPhoneVisible&&!bBackpackVisible)CityPhonePage=(CityPhonePage+1)%5;}
 void AVoyagerController::CityPhoneFour(){CityPhoneAction(4);}
 void AVoyagerController::CityPhoneFive(){CityPhoneAction(5);}
 void AVoyagerController::CityPhoneSix(){CityPhoneAction(6);}
@@ -75,7 +77,9 @@ void AVoyagerController::ServerCityAction_Implementation(uint8 Action,int32 Argu
 }
 void AVoyagerController::CityPhoneAction(int32 Number)
 {
-    if(!bCityPhoneVisible||!CityLifeView.bAvailable||Number<1||Number>8)return;
+    if(!bCityPhoneVisible||Number<1||Number>8)return;
+    if(bBackpackVisible){ServerSurvivalAction(uint8(Number));return;}
+    if(!CityLifeView.bAvailable)return;
     auto Send=[this](EVoyagerCityAction Action,int32 Argument=0){ServerCityAction(static_cast<uint8>(Action),Argument);};
     switch(CityPhonePage)
     {
@@ -114,6 +118,7 @@ void AVoyagerController::CityPhoneAction(int32 Number)
 void AVoyagerHUD::DrawCityPhone(AVoyagerController* PC)
 {
     if(!PC||!Canvas||!GEngine)return;
+    if(PC->bBackpackVisible){DrawBackpack(PC);return;}
     const float Scale=FMath::Max(.1f,FMath::Min(Canvas->SizeX/1600.f,Canvas->SizeY/900.f));
     const float ViewWidth=Canvas->SizeX/Scale,ViewHeight=Canvas->SizeY/Scale;
     const float Width=1180,Height=760,Left=(ViewWidth-Width)*.5f,Top=(ViewHeight-Height)*.5f;

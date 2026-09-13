@@ -24,6 +24,9 @@ The settlement marker leads to a city about **320 metres** from the landing site
 - **P** opens the city phone. **Left/Right** changes pages, **1–8** selects a displayed action, and **P**, **Escape** or **Backspace** closes it. Movement and weapons are held while using the phone; the world continues running.
 - **N** cycles the city entrance guide: home, workplace, nearest market, nearest Civic Security, then off. It appears on foot near a city with the phone closed. The marker names the building, measures entrance distance and points toward offscreen entrances.
 - **F5** saves the expedition. **Escape** opens the menu.
+- **I** opens the backpack; **1–8** selects food, crafting and equipment actions. **I**, **Escape** or **Backspace** closes it; **P** switches to the city phone.
+- **R** reloads the sidearm's 24-shot magazine in 1.4 seconds. Each shot consumes one energy cell; the backpack can craft more.
+- **G** surrenders to observing security while wanted, on foot and within 250 metres. Equipment and boarding are secured during custody.
 
 ## Flying
 
@@ -49,6 +52,10 @@ The system index supports over two billion system seeds, with five destinations 
 
 ## Cities, wildlife, and landscapes
 
+**B** while flying above 60 km cruises to the system's black-hole survey point. The safe viewpoint faces an original dark horizon, accretion disk and halo. Moving much closer triggers a warning and damaging tidal forces; **Tab + J** cruises back to a selected planet. These are procedural visual and gameplay approximations, not a general-relativistic ray tracer. Existing atmosphere and cloud presentation has been retuned for surface-to-orbit views.
+
+The volume weather material is `MI_CosmosWeather`, a project instance of Unreal's installed `m_SimpleVolumetricCloud_Inst`. Native atmosphere and cloud components render it. Disk, halo and distant orbital cloud materials are original project work; the engine parent is credited separately in [Art/Cosmos/PROVENANCE.md](Art/Cosmos/PROVENANCE.md).
+
 Each planet has three deterministic settlement sites: one near the north landing area and two remote sites. Each city is roughly 400 metres across, with **60 fully enterable buildings**, terrain foundations, roads, roof equipment, antennae, and a central landing plaza. The city palette follows the planet's biome. Street ramps, open doorways, rooms and the surrounding planet share the same coordinates and collision. There are no interior loading screens. Buildings have 3–18 occupied floors with 4.8-metre floor spacing. Switchback stairs connect every floor to an accessible roof. Window openings have glass and frames; entrance doors stand open. Smooth ramp collision under visible steps lets characters walk naturally. No elevator is required for access.
 
 Six furnished layouts provide cafe seating and counters, clinic beds, market shelves, workshop benches, residential lounges and security dispatch desks. Original procedural materials add plaster, wood, metal, fabric and ceramic finishes. Nearby rooms receive warm lighting from a pool of at most eight active lights, with four more lights illuminating nearby streets. The multitool is lowered while you explore a city; using it brings it back up.
@@ -69,19 +76,29 @@ The Work & Home page shows your actual employer and residential building. Enter 
 
 Justice shows citations and recorded offenses. Pay an outstanding fine inside a Civic Security building; credits transfer to the public treasury and the record remains. Hiding from a patrol does not pay a citation. News reports real population, employment, stock, money and sanitation totals. It uses rules and current city data, so no AI service is required.
 
-Relocation preserves resident identity, possessions and needs while assigning a real local home and job. It does not create cross-planet property ownership. This integration has an eight-good economy and persistent accounts; full traffic, public transit, mortgages, trials, prison, voxel destruction and economic disasters remain future work.
+Relocation preserves resident identity, possessions and needs while assigning a real local home and job. It does not create cross-planet property ownership. The eight-good economy now sits alongside a bounded police/custody system and destructible procedural buildings. Full civilian traffic, public transit, mortgages, trials, a prison economy, voxel terrain destruction and economic disasters remain future work.
+
+## Field supplies and demolition
+
+Hunt wildlife with the sidearm, approach an unharvested carcass, and press **E** for meat, hide and bone. The server validates range, sight and stack capacity and grants each carcass only once. Collected supplies save with the host's expedition; individual animal deaths remain session state. Citizen eyes and walking clips have been regenerated, including foot placement and a guard aiming pose.
+
+The **I** backpack has seven item stacks and eight actions. **1** eats raw meat, restoring 20 nourishment while costing 8 health. **2** cooks one raw meat with one mineral beside your landed ship (within 12 m), or inside a cafe or residence. **3** eats cooked meat for 50 nourishment, 8 hydration and 8 health. **4** crafts a medkit from two hide, two bone and five minerals; **5** uses one to restore up to 35 health. **6** crafts a demolition charge from two bone and twelve minerals. **7** attaches a charge to the building surface you aim at within 30 m. **8** crafts thirty energy cells from eight minerals. Recipes validate ingredients and output capacity before charging the inventory.
+
+Charges detonate after three seconds with a 22 m damage radius. Window damage removes glazing at the affected level; structural damage removes upper floors as integrity falls and can demolish the building. A maximum of 96 temporary debris actors use Unreal's native Chaos rigid-body simulation and radial gravity. Building integrity and glass flags are authoritative saved deltas; debris transforms do not decide the persistent structure. This is component-based building damage and debris, not Geometry Collection fracture, voxel excavation, fire propagation or a building-support engineering solver.
 
 ## Combat and progression
 
+Ground response now adds one armored hover cruiser and up to four armed officers per suspect, alongside civic guards and up to four patrol ships. Ships descend near surface suspects. Ground units warn for four seconds and fire at two stars or above; opaque cover blocks fire. **G** surrenders under observation within 250 m. Healthy surrender preserves current health; incapacitation under observation uses the ordinary medical recovery and can also lead to arrest. A Civic holding cell lasts 20 seconds plus eight per wanted star, then releases the player while retaining citation balances and records. Server checks block equipment use and escape from the cell. The host's remaining sentence resumes on reload; active pursuit and joining players' custody remain session state. Shared system travel waits until every crew member is free.
+
 **V** equips a pulse sidearm. Residents have authoritative health, react to assault, and can die; their non-graphic collapse, stopped routine and closed conversations replicate to co-op players. Skin, fitted clothing, hair, eyes and skeletal animation use documented CC0 MakeHuman assets and original clips.
 
-Observed attacks trigger emergency reports and **one to five wanted stars**. Repeated assault, homicide and attacks on law enforcement escalate the response. Up to four patrol ships respond to each suspect, with independent cases for co-op players. They use line-of-sight sensors, follow the last observed position when the suspect is hidden, and stand down after 35–75 seconds without contact. Opaque walls and roofs break sight; window glass stops shots but allows vision. Patrol shots have a short targeting warning so movement can evade them. Patrols can be damaged and destroyed; doing so escalates the case. Escape in your ship, hide inside a building, or leave the star system. Emergency suit/ship recovery ends a pursuit and preserves cargo.
+Observed attacks and property damage trigger emergency reports and **one to five wanted stars**. Repeated assault, homicide and attacks on law enforcement escalate the response. Cases are independent for co-op players. Sensors follow the last observed position when a suspect is hidden, and stand down after 35–75 seconds without contact. Opaque walls and roofs break sight; window glass stops shots but allows vision. Patrol shots have a short targeting warning so movement can evade them. Units can be damaged and destroyed; doing so escalates the case. Escape in your ship, hide inside a building, leave the star system before arrest, or surrender. Emergency recovery preserves cargo; an observed incapacitated suspect can be arrested instead of returning to the landing site.
 
 The scout, corsairs and patrols use a shared original Kestrel airframe with separate liveries, a framed canopy, recessed engines, retracting landing gear, streamed PBR materials and three mesh detail levels. Patrols have flashing beacons and a search light.
 
 Red corsair ships appear in orbit. Their shots are telegraphed, so move or boost to evade. Your scout has shields and hull integrity; shields start recharging after six seconds without damage. Defeating a corsair awards 25 minerals. Each laser upgrade adds five damage. Emergency recovery repairs your ship if it is destroyed and preserves cargo.
 
-Solo and host progression save automatically on rewards, upgrades, travel and successful city transactions. The save contains the current system and planet, the host's mineral inventory, upgrades, pirate kills, discovered planets and city archives. City archives preserve resident accounts, inventory, needs, employment, citations and deaths as deterministic deltas. **F5**, **Escape → Save Expedition**, and **Save and Quit** also request a save. A resumed expedition starts on foot at the last selected planet's landing site; exact walking and flight positions are not saved.
+Solo and host progression save automatically on rewards, upgrades, travel and successful city transactions. The save contains the current system and planet, the host's minerals and field item stacks, upgrades, pirate kills, discoveries, building damage, remaining custody and city archives. City archives preserve resident accounts, inventory, needs, employment, citations and deaths as deterministic deltas. **F5**, **Escape → Save Expedition**, and **Save and Quit** also request a save. A resumed expedition starts on foot at the last selected planet's landing site, or returns to Civic custody if a sentence remains; other exact walking and flight positions are not saved. Legacy saves receive 120 starting energy cells.
 
 The save is `Voyager-Expedition.sav` under the running game's `Saved/SaveGames` folder. For the supplied standalone layout, that folder is `Packaged/Riftbound/Windows/Riftbound/Saved/SaveGames`. The editor-run game and packaged game use separate Saved folders. Development tests use a separate `Voyager-Automation` slot. A client's save command saves the host's expedition; it does not create persistent client progression.
 
@@ -95,11 +112,21 @@ The host runs one shared star system. Players have separate ships and cargo and 
 
 ## Build and test
 
+Version **0.9.0** validation is tracked in [VOYAGER_FRONTIERS.md](docs/phases/VOYAGER_FRONTIERS.md). Current source features and pending runtime checks are listed separately; the 0.8 results below are historical.
+
+- `Scripts/Test-VoyagerPolice.ps1`: warnings, officer damage, cover, dispatch, surrender, custody, release, saved sentences and incapacitation arrest. Supports `-Network`, `-Render` and `-Packaged`.
+- `Scripts/Test-VoyagerHunt.ps1`: animal damage/death, harvest validation and inventory. Supports `-Network`, `-Render` and `-Packaged`.
+- `Scripts/Test-VoyagerSurvival.ps1`: recipes, food/medical effects, inventory transactions and charge placement. Supports `-Render` and `-Packaged`.
+- `Scripts/Test-VoyagerCosmos.ps1`: atmosphere/orbit fixtures, seeded anomaly visuals, survey flight and hazards. Supports `-Render` and `-Packaged`.
+
+These new audits use distinct `Voyager-Automation-Police`, `-Hunt`, `-Survival`, `-Cosmos` and `-Destruction` slots. Normal expedition saves are checked for preservation.
+
 - `Scripts/Build.ps1`: compile the Unreal editor module, import the original terrain texture, and create materials, cloud assets, and audio.
+- `Scripts/bootstrap_voyager_cosmos.py`: generate the original cosmos materials and the project instance of installed native weather. `Build.ps1` includes this pass and records `Saved/VoyagerCosmosMaterialsReport.json`.
 - `Scripts/bootstrap_voyager_materials.py`: import terrain albedo and generate terrain, planet, atmosphere, architecture, and animal materials in Unreal's Python environment.
 - `Scripts/bootstrap_voyager_clouds.py`: generate the volumetric and distant cloud materials.
 - `Scripts/bootstrap_voyager_city_materials.py`: generate the interior and citizen materials.
-- `Scripts/bootstrap_voyager_characters.py`: import the clothed skeletal characters, five animation clips per variant and three LODs.
+- `Scripts/bootstrap_voyager_characters.py`: import the clothed skeletal characters, six animation clips per variant (including Aim) and three LODs.
 - `Scripts/bootstrap_voyager_ships.py`: import the original Kestrel meshes, LODs and PBR materials.
 - `Scripts/bootstrap_voyager_building_materials.py`: build clear architectural glazing.
 - `Scripts/Test-VoyagerCrime.ps1`: actual sidearm hits, deaths, patrol arrival/fire, hiding, search expiry and recovery. Add `-Network` for replicated cases/deaths and an innocent peer, `-Render` for game captures, `-Packaged` for the standalone build.
