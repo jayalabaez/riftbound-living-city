@@ -1,5 +1,8 @@
 # Voyager Frontiers — version 0.9.0
 
+Historical release notes. [Version 0.9.1](VOYAGER_SECURITY.md) removes jail and supersedes
+the custody behavior below, with attack drones and new hover vehicle models.
+
 Requested 2026-09-13: extend Riftbound's existing spherical worlds with destruction,
 physics, police vehicles/officers and jail, animal food and crafting, improved NPC motion
 and eyes, natural atmosphere presentation, and other-system/black-hole encounters.

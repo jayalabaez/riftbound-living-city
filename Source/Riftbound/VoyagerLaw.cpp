@@ -32,11 +32,11 @@ void AVoyagerLaw::BeginPlay()
     {
         auto Read=[&](const TCHAR* Key,float& Value,float Low,float High){double N;if(Data->TryGetNumberField(Key,N)&&FMath::IsFinite(N))Value=FMath::Clamp(float(N),Low,High);};
         Read(TEXT("officer_damage"),OfficerDamage,1,25);Read(TEXT("officer_shot_interval_seconds"),OfficerShotInterval,.5f,5);
-        Read(TEXT("initial_warning_seconds"),InitialWarning,2,12);Read(TEXT("sentence_base_seconds"),SentenceBase,5,120);Read(TEXT("sentence_per_star_seconds"),SentencePerStar,1,30);
+        Read(TEXT("initial_warning_seconds"),InitialWarning,2,12);Read(TEXT("drone_damage"),DroneShotDamage,1,20);Read(TEXT("drone_shot_interval_seconds"),DroneInterval,.7f,5);
     }
 }
 void AVoyagerLaw::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerLaw,Custody);}
+{Super::GetLifetimeReplicatedProps(OutLifetimeProps);}
 AVoyagerLaw* AVoyagerLaw::Find(const UWorld* World)
 { for(TActorIterator<AVoyagerLaw> It(World);It;++It)return *It;return nullptr; }
 void AVoyagerLaw::ReportCrime(AController* C,const FVector& Position,int32 Severity,const FString& Description,AActor* Witness)
@@ -91,7 +91,7 @@ void AVoyagerLaw::Resolve(AController* C,bool bNotify)
     const bool WasWanted=PS->WantedStars>0;PS->CrimeHeat=0;PS->WantedStars=0;PS->WantedSearchSeconds=0;PS->NextLawDispatch=0;PS->bLawSearching=false;PS->ForceNetUpdate();
     for(TActorIterator<AVoyagerPatrolShip> It(GetWorld());It;++It)if(It->TargetController()==C)It->Destroy();
     for(TActorIterator<AVoyagerPoliceUnit> It(GetWorld());It;++It)if(It->TargetController()==C)It->Destroy();
-    GroundDispatch.Remove(C);
+    GroundDispatch.Remove(C);DroneDispatch.Remove(C);
     if(WasWanted&&bNotify)if(auto PC=Cast<AVoyagerController>(C))PC->Notify(TEXT("PURSUIT ENDED. Local patrols have stood down."));
 }
 void AVoyagerLaw::Tick(float D)
@@ -103,13 +103,12 @@ void AVoyagerLaw::Tick(float D)
         System=State->SystemSeed;
     }
     const float Now=GetWorld()->GetTimeSeconds();
-    UpdateCustody(Now);
     if(State->bTransitioning)return;
     for(FConstPlayerControllerIterator It=GetWorld()->GetPlayerControllerIterator();It;++It)
     {
         auto C=It->Get();auto PS=C?C->GetPlayerState<AVoyagerPlayerState>():nullptr;
         if(!PS||PS->WantedStars<=0||!C->GetPawn()||IsJailed(C))continue;
-        DispatchGround(C,PS->WantedStars,Now);
+        DispatchGround(C,PS->WantedStars,Now);DispatchDrones(C,PS->WantedStars,Now);
         PS->bLawSearching=Now-PS->LastLawContact>3.f;
         // A lost suspect is searched for at the last observed position. Higher
         // response levels maintain the search longer; fresh contact resets it.
@@ -215,8 +214,6 @@ void AVoyagerPatrolShip::Tick(float D)
             BeamEffect(Start,HitSomething?Hit.ImpactPoint:End,false);
             if(HitSomething&&Hit.GetActor()==Target)
             {
-                if(auto Explorer=Cast<AVoyagerCharacter>(Target))
-                    if(Explorer->Health<=18.f)if(auto Law=AVoyagerLaw::Find(GetWorld()))if(Law->TryArrest(C))return;
                 UGameplayStatics::ApplyPointDamage(Target,Cast<AVoyagerShip>(Target)?18.f:9.f,(End-Start).GetSafeNormal(),Hit,nullptr,this,nullptr);
             }
         }
@@ -246,125 +243,40 @@ void AVoyagerPatrolShip::DestructionEffect_Implementation()
     if(Burst){Burst->Size=9.f;Burst->Color=FLinearColor(1.f,.24f,.025f);UGameplayStatics::FinishSpawningActor(Burst,Burst->GetActorTransform());}
 }
 
-FVoyagerCustodyStatus AVoyagerLaw::GetCustody(AController* C) const
+// Legacy save/API compatibility only. Custody no longer exists in Voyager.
+FVoyagerCustodyStatus AVoyagerLaw::GetCustody(AController*) const { return {}; }
+FVoyagerCustodyStatus AVoyagerLaw::GetResidentCustody(const AVoyagerPlayerState*) const { return {}; }
+bool AVoyagerLaw::IsJailed(AController*) const { return false; }
+bool AVoyagerLaw::Surrender(AController*) { return false; }
+bool AVoyagerLaw::TryArrest(AController*,bool) { return false; }
+void AVoyagerLaw::CaptureCustody(AController*,UVoyagerSave* Save) const
+{if(Save){Save->JailSeconds=0;Save->JailSystem=0;Save->JailPlanet=0;Save->JailSite=0;}}
+void AVoyagerLaw::RestoreCustody(AController*,const UVoyagerSave*) {}
+
+int32 AVoyagerLaw::DroneCount(AController* C) const
+{int32 Count=0;for(TActorIterator<AVoyagerPoliceUnit> It(GetWorld());It;++It)if(It->TargetController()==C&&It->GetHealth()>0&&It->IsDrone())++Count;return Count;}
+void AVoyagerLaw::DispatchDrones(AController* C,int32 Stars,float Now)
 {
-    return GetResidentCustody(C?C->GetPlayerState<AVoyagerPlayerState>():nullptr);
-}
-FVoyagerCustodyStatus AVoyagerLaw::GetResidentCustody(const AVoyagerPlayerState* PS) const
-{
-    FVoyagerCustodyStatus Status;
-    if(!PS)return Status;
-    const auto State=GetWorld()->GetGameState<AVoyagerState>();
-    const float Now=State?State->GetServerWorldTimeSeconds():GetWorld()->GetTimeSeconds();
-    for(const auto& Record:Custody)if(Record.Resident==PS)
-    {Status.bJailed=true;Status.SecondsRemaining=FMath::Max(0.f,Record.ReleaseTime-Now);Status.CivicLocation=Record.Cell;break;}
-    return Status;
-}
-bool AVoyagerLaw::IsJailed(AController* C) const { return GetCustody(C).bJailed; }
-bool AVoyagerLaw::Surrender(AController* C)
-{
-    if(TryArrest(C,true))return true;
-    if(auto PC=Cast<AVoyagerController>(C))PC->Notify(TEXT("Surrender on foot within 250 m and sight of a responding officer or patrol."));
-    return false;
-}
-bool AVoyagerLaw::TryArrest(AController* C,bool bSurrender)
-{
-    if(!HasAuthority()||!C||IsJailed(C))return false;
-    auto Pawn=Cast<AVoyagerCharacter>(C->GetPawn());auto PS=C->GetPlayerState<AVoyagerPlayerState>();auto State=GetWorld()->GetGameState<AVoyagerState>();
-    if(!Pawn||!PS||!State||State->bTransitioning||PS->WantedStars<=0||(!bSurrender&&Pawn->Health>18.f))return false;
-    bool Observed=false;
-    for(TActorIterator<AVoyagerPoliceUnit> It(GetWorld());It&&!Observed;++It)
-        Observed=It->GetHealth()>0&&It->TargetController()==C&&FVector::DistSquared(It->GetActorLocation(),Pawn->GetActorLocation())<FMath::Square(25000.)&&It->CanSee(Pawn);
-    for(TActorIterator<AVoyagerPatrolShip> It(GetWorld());It&&!Observed;++It)
-        Observed=It->Hull>0&&It->TargetController()==C&&FVector::DistSquared(It->GetActorLocation(),Pawn->GetActorLocation())<FMath::Square(25000.)&&It->CanSee(Pawn);
-    for(TActorIterator<AVoyagerCitizen> It(GetWorld());It&&!Observed;++It)
-        Observed=It->IsAlive()&&It->IsSecurityGuard()&&AVoyagerPoliceUnit::HasClearSight(*It,Pawn,25000.f);
-    if(!Observed)return false;
+    auto State=GetWorld()->GetGameState<AVoyagerState>();auto Pawn=C?C->GetPawn():nullptr;
+    if(!State||!Pawn||Stars<2)return;
     const int32 Planet=Voyager::NearestPlanet(State->SystemSeed,Pawn->GetActorLocation());
-    FVoyagerBuildingInfo Station;int32 StationSite=0;double Best=TNumericLimits<double>::Max();
-    for(int32 Site=0;Site<AVoyagerSettlement::SitesPerPlanet;++Site)for(int32 B=0;B<AVoyagerSettlement::BuildingCount();++B)
-    {
-        FVoyagerBuildingInfo Info;if(!AVoyagerSettlement::GetBuildingInfo(State->SystemSeed,Planet,Site,B,Info)||Info.Role!=5)continue;
-        const double Distance=FVector::DistSquared(Pawn->GetActorLocation(),Info.InteriorPoint);
-        if(Distance<Best){Best=Distance;Station=Info;StationSite=Site;}
-    }
-    if(Best==TNumericLimits<double>::Max())return false;
-    FVoyagerCustodyRecord Record;Record.Resident=PS;Record.Cell=Station.InteriorPoint+Station.Up*105;
-    Record.System=State->SystemSeed;Record.Planet=Planet;Record.Site=StationSite;
-    Record.Exit=Station.DoorOutside+Station.Up*110;Record.Up=Station.Up;
-    Record.ReleaseTime=GetWorld()->GetTimeSeconds()+SentenceBase+PS->WantedStars*SentencePerStar;
-    Custody.Add(Record);
+    if(Voyager::SurfaceAltitude(State->SystemSeed,Planet,Pawn->GetActorLocation())>50000)return;
+    const int32 Count=DroneCount(C),Desired=FMath::Min(3,Stars-1);
+    float& Next=DroneDispatch.FindOrAdd(C);if(Next==0){Next=Now+InitialWarning;return;}
+    if(Count>=Desired||Now<Next)return;
+    const FVector Known=C->GetPlayerState<AVoyagerPlayerState>()->LastKnownPosition;
+    const FVector Up=Voyager::SurfaceNormal(State->SystemSeed,Planet,Known);
+    const FVector Side=Voyager::TangentRotation(Up).RotateVector(FVector(1,Count%2?1:-1,0)).GetSafeNormal();
+    FVector Spawn=Known+Side*6000+Up*(1800+Count*400);
+    FCollisionQueryParams Query(SCENE_QUERY_STAT(DroneSpawn),false,Pawn);FHitResult Hit;
+    if(GetWorld()->LineTraceSingleByChannel(Hit,Known+Up*180,Spawn,ECC_Visibility,Query))Spawn=Hit.ImpactPoint-Side*250+Up*350;
     FActorSpawnParameters Params;Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-    if(auto Cell=GetWorld()->SpawnActor<AVoyagerPoliceCell>(Station.InteriorPoint,Voyager::TangentRotation(Station.Up,Station.Forward),Params))
-    {Cells.Add(PS,Cell);Cell->SetLifeSpan(SentenceBase+PS->WantedStars*SentencePerStar+2);}
-    if(!bSurrender||Pawn->Health<=18.f)
-    {if(auto Life=AVoyagerCityLife::Find(GetWorld()))Life->RecoverPlayer(C);Pawn->Health=100;}
-    Pawn->bWeaponMode=false;Pawn->GetCharacterMovement()->StopMovementImmediately();
-    Pawn->GetCharacterMovement()->SetGravityDirection(-Station.Up);
-    Pawn->SetActorLocationAndRotation(Record.Cell,Voyager::TangentRotation(Station.Up,Station.Forward),false,nullptr,ETeleportType::TeleportPhysics);
-    Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Falling);Pawn->ForceNetUpdate();
-    Resolve(C,false);ForceNetUpdate();
-    if(auto PC=Cast<AVoyagerController>(C))PC->Notify(FString::Printf(TEXT("ARRESTED / Civic Security holding cell. Release in %.0f seconds. Citation balance and record remain."),Record.ReleaseTime-GetWorld()->GetTimeSeconds()));
-    UE_LOG(LogTemp,Display,TEXT("VOYAGER POLICE ARREST resident=%s release=%.2f surrender=%d"),*PS->GetPlayerName(),Record.ReleaseTime,bSurrender);
-    return true;
+    if(auto Drone=GetWorld()->SpawnActor<AVoyagerPoliceUnit>(Spawn,Voyager::TangentRotation(Up,-Side),Params))Drone->AssignDrone(C,Count);
+    Next=Now+8.f;
 }
-void AVoyagerLaw::CaptureCustody(AController* C,UVoyagerSave* Save) const
-{
-    if(!Save)return;Save->JailSeconds=0;Save->JailSystem=0;Save->JailPlanet=0;Save->JailSite=0;
-    auto PS=C?C->GetPlayerState<AVoyagerPlayerState>():nullptr;if(!PS)return;
-    for(const auto& Record:Custody)if(Record.Resident==PS)
-    {Save->JailSeconds=FMath::Max(0.f,Record.ReleaseTime-GetWorld()->GetTimeSeconds());Save->JailSystem=Record.System;Save->JailPlanet=Record.Planet;Save->JailSite=Record.Site;break;}
-}
-void AVoyagerLaw::RestoreCustody(AController* C,const UVoyagerSave* Save)
-{
-    if(!HasAuthority()||!Save||!FMath::IsFinite(Save->JailSeconds)||Save->JailSeconds<=0||!C||IsJailed(C))return;
-    auto Pawn=Cast<AVoyagerCharacter>(C->GetPawn());auto PS=C->GetPlayerState<AVoyagerPlayerState>();auto State=GetWorld()->GetGameState<AVoyagerState>();
-    if(!Pawn||!PS||!State||State->SystemSeed!=Save->JailSystem||Save->JailPlanet<0||Save->JailPlanet>=Voyager::PlanetCount||Save->JailSite<0||Save->JailSite>=3)return;
-    FVoyagerBuildingInfo Station;
-    if(!AVoyagerSettlement::GetBuildingInfo(Save->JailSystem,Save->JailPlanet,Save->JailSite,5,Station))return;
-    FVoyagerCustodyRecord Record;Record.Resident=PS;Record.System=Save->JailSystem;Record.Planet=Save->JailPlanet;Record.Site=Save->JailSite;
-    Record.Cell=Station.InteriorPoint+Station.Up*105;Record.Exit=Station.DoorOutside+Station.Up*110;Record.Up=Station.Up;
-    Record.ReleaseTime=GetWorld()->GetTimeSeconds()+FMath::Clamp(Save->JailSeconds,.1f,SentenceBase+5*SentencePerStar);Custody.Add(Record);
-    FActorSpawnParameters Params;Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-    if(auto Cell=GetWorld()->SpawnActor<AVoyagerPoliceCell>(Station.InteriorPoint,Voyager::TangentRotation(Station.Up,Station.Forward),Params))
-    {Cells.Add(PS,Cell);Cell->SetLifeSpan(Record.ReleaseTime-GetWorld()->GetTimeSeconds()+2);}
-    Pawn->bWeaponMode=false;Pawn->GetCharacterMovement()->StopMovementImmediately();Pawn->GetCharacterMovement()->SetGravityDirection(-Station.Up);
-    Pawn->SetActorLocationAndRotation(Record.Cell,Voyager::TangentRotation(Station.Up,Station.Forward),false,nullptr,ETeleportType::TeleportPhysics);
-    Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Falling);Pawn->ForceNetUpdate();Resolve(C,false);ForceNetUpdate();
-    if(auto PC=Cast<AVoyagerController>(C))PC->Notify(FString::Printf(TEXT("CUSTODY RESUMED / %.0f seconds remaining in Civic Security."),Save->JailSeconds));
-    UE_LOG(LogTemp,Display,TEXT("VOYAGER POLICE CUSTODY RESTORED seconds=%.2f system=%d planet=%d site=%d"),Save->JailSeconds,Save->JailSystem,Save->JailPlanet,Save->JailSite);
-}
-void AVoyagerLaw::UpdateCustody(float Now)
-{
-    for(int32 I=Custody.Num()-1;I>=0;--I)
-    {
-        const auto Record=Custody[I];AController* Controller=nullptr;
-        for(FConstPlayerControllerIterator It=GetWorld()->GetPlayerControllerIterator();It;++It)
-            if(It->Get()&&It->Get()->GetPlayerState<AVoyagerPlayerState>()==Record.Resident){Controller=It->Get();break;}
-        auto Pawn=Controller?Cast<AVoyagerCharacter>(Controller->GetPawn()):nullptr;
-        if(!Controller||Now>=Record.ReleaseTime)
-        {
-            if(auto Cell=Cells.Find(Record.Resident))if(Cell->IsValid())Cell->Get()->Destroy();Cells.Remove(Record.Resident);
-            Custody.RemoveAt(I);ForceNetUpdate();
-            if(Pawn)
-            {
-                Pawn->GetCharacterMovement()->StopMovementImmediately();Pawn->SetActorLocation(Record.Exit,false,nullptr,ETeleportType::TeleportPhysics);
-                Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Falling);Pawn->ForceNetUpdate();
-                if(auto PC=Cast<AVoyagerController>(Controller))PC->Notify(TEXT("RELEASED. Your citation balance remains payable at Civic Security. G surrenders during pursuit."));
-            }
-            continue;
-        }
-        if(Pawn)
-        {
-            // The authority enforces custody even if a client sends old movement or boarding packets.
-            Pawn->bWeaponMode=false;
-            if(FVector::DistSquared(Pawn->GetActorLocation(),Record.Cell)>FMath::Square(145.))
-            {Pawn->GetCharacterMovement()->StopMovementImmediately();Pawn->SetActorLocation(Record.Cell,false,nullptr,ETeleportType::TeleportPhysics);Pawn->ForceNetUpdate();}
-        }
-    }
-}
+
 int32 AVoyagerLaw::GroundUnitCount(AController* C,bool bVehicle) const
-{int32 Count=0;for(TActorIterator<AVoyagerPoliceUnit> It(GetWorld());It;++It)if(It->TargetController()==C&&It->GetHealth()>0&&It->IsVehicle()==bVehicle)++Count;return Count;}
+{int32 Count=0;for(TActorIterator<AVoyagerPoliceUnit> It(GetWorld());It;++It)if(It->TargetController()==C&&It->GetHealth()>0&&!It->IsDrone()&&It->IsVehicle()==bVehicle)++Count;return Count;}
 void AVoyagerLaw::DispatchGround(AController* C,int32 Stars,float Now)
 {
     auto Pawn=Cast<AVoyagerCharacter>(C->GetPawn());auto State=GetWorld()->GetGameState<AVoyagerState>();if(!Pawn||!State)return;
@@ -412,11 +324,10 @@ void AVoyagerLaw::TickGuard(AVoyagerCitizen* Guard,float D)
     if(!GuardTargets.Contains(Guard)||GuardTargets[Guard].Get()!=Target)
     {
         GuardTargets.Add(Guard,Target);GuardShots.Add(Guard,Now+InitialWarning);
-        if(auto PC=Cast<AVoyagerController>(Target))PC->Notify(TEXT("CIVIC SECURITY: Stop and press G to surrender. Armed response after warning."));
+        if(auto PC=Cast<AVoyagerController>(Target))PC->Notify(TEXT("CIVIC SECURITY: Armed response inbound. Break line of sight and escape."));
     }
     Contact(Target,Target->GetPawn()->GetActorLocation());
     auto PS=Target->GetPlayerState<AVoyagerPlayerState>();auto Pawn=Cast<AVoyagerCharacter>(Target->GetPawn());
-    if(Pawn->Health<=18.f){TryArrest(Target);return;}
     if(PS->WantedStars<2||Now<GuardShots.FindOrAdd(Guard))return;
     GuardShots[Guard]=Now+OfficerShotInterval;
     const FVector Start=Guard->GetActorLocation()+Guard->GetActorUpVector()*140.f,End=Pawn->GetPawnViewLocation();

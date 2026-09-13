@@ -845,3 +845,24 @@ gameplay/visual approximations, not general-relativistic ray tracing. No paid Fa
 or plugins are purchased or redistributed for this pass. Existing CC0 character and nature
 credits remain applicable. Current evidence and explicit exclusions live in
 `docs/phases/VOYAGER_FRONTIERS.md`; prior release results do not validate the new features.
+
+
+## D-032 — Remove Voyager custody; armed drones and original hover vehicles — 2026-09-13
+
+The owner explicitly removed jail. Version 0.9.1 deletes cells, arrest transitions and
+surrender input; old save fields and no-op law APIs remain for deserialization/call-site
+compatibility. Restoring an old sentence never moves or restricts the player. Every new
+save writes zero sentence fields, including controller teardown. Normal medical recovery
+and citation balances remain; no replacement detention mechanic is introduced.
+
+The existing authoritative police actor now also represents Sentinel drones. Two or more
+stars dispatch up to three per suspect near the surface; movement sweeps avoid solid
+geometry and weapon traces apply damage only to the assigned target. Peer clients render
+replicated motion and health without applying damage locally. Fallen drones expire and
+resolved cases retire their response actors. JSON controls shot damage and timing.
+
+Original Vesper cruiser and Sentinel meshes replace primitive vehicle presentation. Both
+use three authored LODs and existing project PBR material parents. Their source meshes,
+reproducible import script and provenance ship with the public project. No marketplace
+purchase is needed; this is an art and pursuit upgrade, not civilian traffic or a playable
+car interior. Validation lives in `docs/phases/VOYAGER_SECURITY.md`.

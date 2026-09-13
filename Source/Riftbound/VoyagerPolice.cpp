@@ -8,6 +8,9 @@
 #include "Animation/AnimationAsset.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Components/TextRenderComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
@@ -30,7 +33,7 @@ void AVoyagerPoliceUnit::BeginPlay()
 {Super::BeginPlay();Pose.Location=GetActorLocation();Pose.Rotation=GetActorRotation();VisualRoot->SetWorldLocationAndRotation(Pose.Location,Pose.Rotation);BuildVisuals();}
 void AVoyagerPoliceUnit::Assign(AController* Target,bool Vehicle,int32 Slot)
 {
-    SuspectController=Target;bVehicle=Vehicle;SlotIndex=Slot;Health=Vehicle?250.f:110.f;
+    SuspectController=Target;bVehicle=Vehicle;SlotIndex=Slot;Health=bDrone?80.f:Vehicle?250.f:110.f;
     if(auto State=GetWorld()->GetGameState<AVoyagerState>())
     {
         Planet=Voyager::NearestPlanet(State->SystemSeed,GetActorLocation());double Best=TNumericLimits<double>::Max();
@@ -38,38 +41,36 @@ void AVoyagerPoliceUnit::Assign(AController* Target,bool Vehicle,int32 Slot)
     }
     if(auto Law=AVoyagerLaw::Find(GetWorld()))NextShot=Law->WarningTime()+Slot*.35f;
     BuildVisuals();ForceNetUpdate();
-    if(auto PC=Cast<AVoyagerController>(Target))PC->Notify(Vehicle?TEXT("SECURITY CRUISER INBOUND / Press G on foot to surrender."):TEXT("ARMED OFFICERS: Stop and press G to surrender. Take cover to break sight."));
+    if(auto PC=Cast<AVoyagerController>(Target))PC->Notify(bDrone?TEXT("SECURITY DRONE INBOUND / Find solid cover."):Vehicle?TEXT("SECURITY CRUISER INBOUND / Evade the pursuit."):TEXT("ARMED OFFICERS: Take cover and break line of sight."));
 }
+void AVoyagerPoliceUnit::AssignDrone(AController* Target,int32 Slot)
+{bDrone=true;Assign(Target,false,Slot);}
 void AVoyagerPoliceUnit::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerPoliceUnit,bVehicle);DOREPLIFETIME(AVoyagerPoliceUnit,Health);DOREPLIFETIME(AVoyagerPoliceUnit,bMoving);DOREPLIFETIME(AVoyagerPoliceUnit,Pose);}
+{Super::GetLifetimeReplicatedProps(OutLifetimeProps);DOREPLIFETIME(AVoyagerPoliceUnit,bVehicle);DOREPLIFETIME(AVoyagerPoliceUnit,bDrone);DOREPLIFETIME(AVoyagerPoliceUnit,Health);DOREPLIFETIME(AVoyagerPoliceUnit,bMoving);DOREPLIFETIME(AVoyagerPoliceUnit,Pose);}
 void AVoyagerPoliceUnit::OnRep_Kind(){BuildVisuals();}
 void AVoyagerPoliceUnit::OnRep_Pose(){if(!HasAuthority())SetActorLocationAndRotation(Pose.Location,Pose.Rotation,false);}
 void AVoyagerPoliceUnit::BuildVisuals()
 {
-    Collision->SetSphereRadius(bVehicle?240.f:85.f);Collision->SetRelativeLocation(FVector(0,0,bVehicle?60:90));
+    Collision->SetSphereRadius(bDrone?70.f:bVehicle?220.f:85.f);Collision->SetRelativeLocation(FVector(0,0,bDrone?0:bVehicle?60:90));
     if(GetNetMode()==NM_DedicatedServer)return;
     TArray<USceneComponent*> Old;VisualRoot->GetChildrenComponents(true,Old);for(int32 I=Old.Num()-1;I>=0;--I)Old[I]->DestroyComponent();Body=nullptr;
     auto Part=[&](const TCHAR* Name,const TCHAR* Shape,FVector At,FVector Scale,FLinearColor Color,bool Glow=false){return RiftVisual::Mesh(this,VisualRoot,FName(Name),Shape,At,Scale,Color,Glow);};
     const FLinearColor Armor(.045f,.07f,.09f),Steel(.26f,.3f,.34f),Blue(.015f,.24f,1.f),Red(1.f,.015f,.01f);
-    if(bVehicle)
+    if(bVehicle||bDrone)
     {
-        Part(TEXT("ArmoredChassis"),TEXT("Cube"),FVector(0,0,40),FVector(6.5f,3.05f,.9f),Armor);
-        Part(TEXT("Cabin"),TEXT("Cube"),FVector(-45,0,127),FVector(3.9f,2.75f,1.1f),Steel);
-        auto Windshield=Part(TEXT("ArmoredWindshield"),TEXT("Cube"),FVector(151,0,141),FVector(.1f,2.35f,.65f),FLinearColor(.025f,.075f,.10f));Windshield->SetRelativeRotation(FRotator(0,0,-12));
-        Part(TEXT("Hood"),TEXT("Cube"),FVector(228,0,88),FVector(1.8f,2.8f,.35f),Steel);
-        Part(TEXT("FrontRam"),TEXT("Cube"),FVector(325,0,47),FVector(.25f,3.3f,.65f),Steel);
-        Part(TEXT("LightBar"),TEXT("Cube"),FVector(-30,0,188),FVector(1.f,2.3f,.14f),Armor);
-        for(int32 S:{-1,1})
+        auto Mesh=LoadObject<UStaticMesh>(nullptr,bDrone?TEXT("/Game/Security/SM_SentinelDrone.SM_SentinelDrone"):TEXT("/Game/Security/SM_VesperCruiser.SM_VesperCruiser"));
+        if(Mesh)
         {
-            Part(*FString::Printf(TEXT("Emergency%d"),S),TEXT("Cube"),FVector(-30,S*75,200),FVector(.8f,.6f,.13f),S<0?Red:Blue,true);
-            Part(*FString::Printf(TEXT("Door%d"),S),TEXT("Cube"),FVector(-45,S*141,100),FVector(2.05f,.07f,.63f),FLinearColor(.72f,.76f,.79f));
-            Part(*FString::Printf(TEXT("Window%d"),S),TEXT("Cube"),FVector(-45,S*141,151),FVector(2.05f,.075f,.35f),FLinearColor(.018f,.052f,.065f));
-            Part(*FString::Printf(TEXT("Headlight%d"),S),TEXT("Cube"),FVector(326,S*108,78),FVector(.055f,.5f,.18f),FLinearColor(.72f,.83f,1.f),true);
-            for(int32 End:{-1,1})
-            {
-                Part(*FString::Printf(TEXT("HoverPod%d%d"),S,End),TEXT("Cylinder"),FVector(End*216,S*168,8),FVector(.98f,.98f,.58f),Armor);
-                Part(*FString::Printf(TEXT("Thruster%d%d"),S,End),TEXT("Cylinder"),FVector(End*216,S*168,-26),FVector(.72f,.72f,.06f),Blue,true);
-            }
+            auto Model=NewObject<UStaticMeshComponent>(this);Model->SetupAttachment(VisualRoot);Model->SetStaticMesh(Mesh);
+            Model->SetCollisionEnabled(ECollisionEnabled::NoCollision);Model->RegisterComponent();AddInstanceComponent(Model);
+            Model->ComponentTags.Add(bDrone?TEXT("SentinelDroneModel"):TEXT("VesperCruiserModel"));
+        }
+        else UE_LOG(LogTemp,Error,TEXT("VOYAGER SECURITY MISSING MODEL drone=%d"),bDrone);
+        if(!bDrone)
+        {
+            auto Label=NewObject<UTextRenderComponent>(this);Label->SetupAttachment(VisualRoot);Label->SetText(FText::FromString(TEXT("SECURITY")));
+            Label->SetRelativeLocation(FVector(0,-107,57));Label->SetRelativeRotation(FRotator(0,-90,0));Label->SetWorldSize(18);Label->SetHorizontalAlignment(EHTA_Center);
+            Label->SetTextRenderColor(FColor(220,230,239));Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);Label->RegisterComponent();AddInstanceComponent(Label);
         }
     }
     else
@@ -96,7 +97,7 @@ void AVoyagerPoliceUnit::BuildVisuals()
 bool AVoyagerPoliceUnit::HasClearSight(const AActor* Observer,const APawn* Target,float Range)
 {
     if(!Observer||!Target)return false;
-    const FVector Eye=Observer->GetActorLocation()+Observer->GetActorUpVector()*150.f;
+    const FVector Eye=Observer->GetActorLocation()+Observer->GetActorUpVector()*(Cast<AVoyagerPoliceUnit>(Observer)&&Cast<AVoyagerPoliceUnit>(Observer)->IsDrone()?0.f:150.f);
     if(FVector::DistSquared(Eye,Target->GetPawnViewLocation())>FMath::Square(double(Range)))return false;
     FHitResult Hit;FCollisionQueryParams Query(SCENE_QUERY_STAT(GroundPoliceSensor),false,Observer);Query.AddIgnoredActor(Target);
     for(int32 Pane=0;Pane<16;++Pane)
@@ -106,7 +107,7 @@ bool AVoyagerPoliceUnit::HasClearSight(const AActor* Observer,const APawn* Targe
     }
     return false;
 }
-bool AVoyagerPoliceUnit::CanSee(APawn* Target) const { return HasClearSight(this,Target,bVehicle?35000.f:26000.f); }
+bool AVoyagerPoliceUnit::CanSee(APawn* Target) const { return HasClearSight(this,Target,bDrone?18000.f:bVehicle?35000.f:26000.f); }
 void AVoyagerPoliceUnit::MoveToward(const FVector& Target,float D)
 {
     auto State=GetWorld()->GetGameState<AVoyagerState>();if(!State)return;
@@ -154,12 +155,40 @@ void AVoyagerPoliceUnit::MoveToward(const FVector& Target,float D)
     Velocity=(Next-GetActorLocation())/FMath::Max(D,.001f);bMoving=Velocity.SizeSquared()>100;
     SetActorLocation(Next);if(bMoving)SetActorRotation(FMath::RInterpTo(GetActorRotation(),Voyager::TangentRotation(Up,Step),D,6.f));
 }
+void AVoyagerPoliceUnit::MoveAerial(const FVector& Known,float D)
+{
+    auto State=GetWorld()->GetGameState<AVoyagerState>();if(!State)return;
+    const FVector Up=Voyager::SurfaceNormal(State->SystemSeed,Planet,GetActorLocation());
+    const FRotator Frame=Voyager::TangentRotation(Up);const float Angle=Age*.24f+SlotIndex*2.1f;
+    const FVector Ring=Frame.RotateVector(FVector(FMath::Cos(Angle),FMath::Sin(Angle),0));
+    FVector Desired=Known+Ring*(1400+SlotIndex*250)+Up*(650+SlotIndex*230);
+    FVector Delta=Desired-GetActorLocation();const float Dt=FMath::Min(D,.1f);
+    Velocity=FMath::VInterpTo(Velocity,Delta.GetClampedToMaxSize(1900),Dt,2.4f);
+    FVector Next=GetActorLocation()+Velocity*Dt;
+    FCollisionQueryParams Query(SCENE_QUERY_STAT(SecurityDroneAvoidance),false,this);
+    for(TActorIterator<AVoyagerPoliceUnit> It(GetWorld());It;++It)Query.AddIgnoredActor(*It);
+    if(auto C=SuspectController.Get())if(C->GetPawn())Query.AddIgnoredActor(C->GetPawn());
+    FHitResult Hit;
+    if(GetWorld()->SweepSingleByChannel(Hit,GetActorLocation(),Next,FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(85),Query))
+    {
+        // Slide along walls and climb around the obstruction; never teleport through it.
+        const FVector Slide=FVector::VectorPlaneProject(Velocity,Hit.ImpactNormal)*Dt+Up*450*Dt;
+        Next=GetActorLocation()+Slide;
+        if(GetWorld()->SweepSingleByChannel(Hit,GetActorLocation(),Next,FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(85),Query))Next=GetActorLocation();
+        Velocity=(Next-GetActorLocation())/FMath::Max(Dt,.001f);
+    }
+    const double Alt=Voyager::SurfaceAltitude(State->SystemSeed,Planet,Next);
+    if(Alt<250)Next+=Up*FMath::Min(250-Alt,450.*Dt);
+    SetActorLocation(Next);bMoving=Velocity.SizeSquared()>100;
+    SetActorRotation(FMath::RInterpTo(GetActorRotation(),Voyager::TangentRotation(Up,Known-Next),Dt,5));
+}
 void AVoyagerPoliceUnit::Tick(float D)
 {
     Super::Tick(D);Age+=D;
     if(GetNetMode()!=NM_DedicatedServer)
     {
-        VisualRoot->SetWorldLocation(FMath::VInterpTo(VisualRoot->GetComponentLocation(),Pose.Location,D,16.f));
+        const FVector Hover= (bVehicle||bDrone)&&Health>0?Pose.Rotation.RotateVector(FVector(0,0,FMath::Sin(Age*(bDrone?2.3f:1.6f))*4.f)):FVector::ZeroVector;
+        VisualRoot->SetWorldLocation(FMath::VInterpTo(VisualRoot->GetComponentLocation(),Pose.Location+Hover,D,16.f));
         VisualRoot->SetWorldRotation(FQuat::Slerp(VisualRoot->GetComponentQuat(),Pose.Rotation.Quaternion(),1-FMath::Exp(-D*16.f)));
         if(Body)if(auto Instance=Body->GetSingleNodeInstance())
         {
@@ -169,7 +198,20 @@ void AVoyagerPoliceUnit::Tick(float D)
             Instance->SetPlayRate(Health>0&&bMoving?1.44f:1.f);
         }
     }
-    if(!HasAuthority()||Health<=0)return;
+    if(!HasAuthority())return;
+    if(Health<=0)
+    {
+        if(bDrone)
+        {
+            const float Dt=FMath::Min(D,.1f);const FVector Up=GetActorUpVector();Velocity-=Up*980*Dt;
+            FHitResult Hit;FCollisionQueryParams Query(SCENE_QUERY_STAT(FallingDrone),false,this);
+            const FVector Next=GetActorLocation()+Velocity*Dt;
+            if(GetWorld()->SweepSingleByChannel(Hit,GetActorLocation(),Next,FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(60),Query))Velocity=FVector::ZeroVector;
+            else SetActorLocation(Next);
+            Pose.Location=GetActorLocation();
+        }
+        return;
+    }
     auto C=SuspectController.Get();auto PS=C?C->GetPlayerState<AVoyagerPlayerState>():nullptr;auto Law=AVoyagerLaw::Find(GetWorld());
     auto State=GetWorld()->GetGameState<AVoyagerState>();
     if(!C||!PS||!Law||PS->WantedStars<=0||Law->IsJailed(C)||!State){Destroy();return;}
@@ -178,23 +220,24 @@ void AVoyagerPoliceUnit::Tick(float D)
     const bool Visible=CanSee(Target);if(Visible){Law->Contact(C,Target->GetActorLocation());LostContact=0;}else LostContact+=D;
     const FVector Known=PS->LastKnownPosition;const double Distance=FVector::Dist(GetActorLocation(),Known);
     // Cruisers stop outside buildings; officers approach from cover and fan out.
-    if(!Visible||Distance>(bVehicle?2200.:1400.+SlotIndex*350.))MoveToward(Known,D);
+    if(bDrone)MoveAerial(Known,D);
+    else if(!Visible||Distance>(bVehicle?2200.:1400.+SlotIndex*350.))MoveToward(Known,D);
     else
     {
         bMoving=false;Velocity=FVector::ZeroVector;
         SetActorRotation(Voyager::TangentRotation(Voyager::SurfaceNormal(State->SystemSeed,Planet,GetActorLocation()),Known-GetActorLocation()));
     }
     Pose.Location=GetActorLocation();Pose.Rotation=GetActorRotation();
-    if(bVehicle||!Visible||Cast<AVoyagerShip>(Target))return;
-    auto Explorer=Cast<AVoyagerCharacter>(Target);if(!Explorer)return;
-    if(Explorer->Health<=18.f&&Law->TryArrest(C))return;
+    if(bVehicle||!Visible||(!bDrone&&Cast<AVoyagerShip>(Target)))return;
+    if(!Cast<AVoyagerCharacter>(Target)&&!Cast<AVoyagerShip>(Target))return;
     if(PS->WantedStars<2||Age<NextShot)return;
-    NextShot=Age+FMath::Max(.85f,Law->GroundShotInterval()-PS->WantedStars*.12f);
-    const FVector Up=GetActorUpVector(),Start=GetActorLocation()+Up*132+GetActorForwardVector()*70;
+    NextShot=Age+FMath::Max(.85f,(bDrone?Law->DroneShotInterval():Law->GroundShotInterval())-PS->WantedStars*.12f);
+    const FVector Up=GetActorUpVector(),Start=GetActorLocation()+Up*(bDrone?-22:132)+GetActorForwardVector()*(bDrone?85:70);
     const FVector End=Target->GetPawnViewLocation();FHitResult Hit;FCollisionQueryParams Query(SCENE_QUERY_STAT(OfficerFire),false,this);
     const bool HitSomething=GetWorld()->LineTraceSingleByChannel(Hit,Start,End,ECC_Visibility,Query);
     ++Fired;ShotEffect(Start,HitSomething?Hit.ImpactPoint:End,false);
-    if(HitSomething&&Hit.GetActor()==Target)UGameplayStatics::ApplyPointDamage(Target,Law->GroundDamage(),(End-Start).GetSafeNormal(),Hit,nullptr,this,nullptr);
+    if(HitSomething&&Hit.GetActor()==Target)
+        if(UGameplayStatics::ApplyPointDamage(Target,bDrone?Law->DroneDamage():Law->GroundDamage(),(End-Start).GetSafeNormal(),Hit,nullptr,this,nullptr)>0)++Hits;
 }
 void AVoyagerPoliceUnit::ShotEffect_Implementation(FVector From,FVector To,bool bWarning)
 {if(GetNetMode()!=NM_DedicatedServer){DrawDebugLine(GetWorld(),From,To,bWarning?FColor(90,160,255):FColor(255,155,45),false,bWarning?.75f:.12f,0,bWarning?1.f:4.f);DrawDebugPoint(GetWorld(),From,9,FColor(255,220,140),false,.1f);}}
@@ -205,17 +248,4 @@ float AVoyagerPoliceUnit::TakeDamage(float Damage,const FDamageEvent& Event,ACon
     if(auto Law=AVoyagerLaw::Find(GetWorld()))Law->ReportCrime(DamageInstigator,GetActorLocation(),Health<=0?110:35,Health<=0?TEXT("security unit destroyed"):TEXT("attack on officer"),this);
     if(Health<=0){bMoving=false;SetActorEnableCollision(false);if(bVehicle)SetActorRotation(GetActorRotation()+FRotator(0,0,82));Pose.Rotation=GetActorRotation();SetLifeSpan(15.f);}
     return Applied;
-}
-AVoyagerPoliceCell::AVoyagerPoliceCell(){bReplicates=true;bAlwaysRelevant=true;SetReplicateMovement(true);SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("HoldingCell")));}
-void AVoyagerPoliceCell::BeginPlay()
-{
-    Super::BeginPlay();if(GetNetMode()==NM_DedicatedServer)return;
-    const FLinearColor Steel(.10f,.13f,.15f);
-    for(int32 Side=0;Side<4;++Side)for(int32 Bar=-4;Bar<=4;++Bar)
-    {
-        const bool AlongX=Side<2;const float Sign=Side%2==0?1.f:-1.f;
-        RiftVisual::Mesh(this,GetRootComponent(),FName(*FString::Printf(TEXT("CellBar_%d_%d"),Side,Bar)),TEXT("Cylinder"),AlongX?FVector(Sign*170,Bar*40,145):FVector(Bar*40,Sign*170,145),FVector(.045f,.045f,2.9f),Steel);
-    }
-    RiftVisual::Mesh(this,GetRootComponent(),TEXT("CellUpperFrame"),TEXT("Cube"),FVector(0,0,292),FVector(3.6f,3.6f,.06f),Steel);
-    RiftVisual::Mesh(this,GetRootComponent(),TEXT("CellBench"),TEXT("Cube"),FVector(-120,0,45),FVector(.6f,2.7f,.10f),Steel);
 }

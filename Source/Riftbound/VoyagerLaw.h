@@ -20,20 +20,6 @@ struct FVoyagerCustodyStatus
 };
 
 USTRUCT()
-struct FVoyagerCustodyRecord
-{
-    GENERATED_BODY()
-    UPROPERTY() TObjectPtr<AVoyagerPlayerState> Resident;
-    UPROPERTY() float ReleaseTime=0;
-    UPROPERTY() FVector Cell=FVector::ZeroVector;
-    UPROPERTY() FVector Exit=FVector::ZeroVector;
-    UPROPERTY() FVector Up=FVector::UpVector;
-    UPROPERTY() int32 System=1;
-    UPROPERTY() int32 Planet=0;
-    UPROPERTY() int32 Site=0;
-};
-
-USTRUCT()
 struct FVoyagerLawPose
 {
     GENERATED_BODY()
@@ -70,16 +56,18 @@ public:
     int32 GroundUnitCount(AController* Controller,bool bVehicle=false) const;
     float GroundDamage() const { return OfficerDamage; }
     float GroundShotInterval() const { return OfficerShotInterval; }
+    int32 DroneCount(AController* Controller) const;
+    float DroneDamage() const { return DroneShotDamage; }
+    float DroneShotInterval() const { return DroneInterval; }
     float WarningTime() const { return InitialWarning; }
 private:
-    UPROPERTY(Replicated) TArray<FVoyagerCustodyRecord> Custody;
     TMap<TWeakObjectPtr<AController>,float> GroundDispatch;
-    TMap<TWeakObjectPtr<AVoyagerPlayerState>,TWeakObjectPtr<AActor>> Cells;
     TMap<TWeakObjectPtr<AVoyagerCitizen>,float> GuardShots;
     TMap<TWeakObjectPtr<AVoyagerCitizen>,TWeakObjectPtr<AController>> GuardTargets;
     float OfficerDamage=9.f,OfficerShotInterval=1.8f,InitialWarning=4.f;
-    float SentenceBase=20.f,SentencePerStar=8.f;
-    void UpdateCustody(float Now);
+    float DroneShotDamage=6.f,DroneInterval=1.6f;
+    TMap<TWeakObjectPtr<AController>,float> DroneDispatch;
+    void DispatchDrones(AController* Controller,int32 Stars,float Now);
     void DispatchGround(AController* Controller,int32 Stars,float Now);
     int32 System=INDEX_NONE;
 };

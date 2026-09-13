@@ -280,7 +280,6 @@ void AVoyagerController::SetupInputComponent()
     Super::SetupInputComponent();InputComponent->BindAction("Menu",IE_Pressed,this,&AVoyagerController::ToggleMenu);InputComponent->BindAction("Save",IE_Pressed,this,&AVoyagerController::SaveInput);InputComponent->BindAction("Upgrade",IE_Pressed,this,&AVoyagerController::UpgradeInput);
     InputComponent->BindKey(EKeys::P,IE_Pressed,this,&AVoyagerController::ToggleCityPhone);
     InputComponent->BindKey(EKeys::I,IE_Pressed,this,&AVoyagerController::ToggleBackpack);
-    InputComponent->BindKey(EKeys::G,IE_Pressed,this,&AVoyagerController::ServerSurrender);
     InputComponent->BindKey(EKeys::R,IE_Pressed,this,&AVoyagerController::ServerReload);
     InputComponent->BindKey(EKeys::N,IE_Pressed,this,&AVoyagerController::CycleCityGuide);
     InputComponent->BindKey(EKeys::Left,IE_Pressed,this,&AVoyagerController::CityPhonePreviousPage);
@@ -347,7 +346,7 @@ void AVoyagerController::ShowMenu()
       +SVerticalBox::Slot().AutoHeight().Padding(0,14,0,4)[Label(TEXT("Join a host IP  /  shared star system  /  up to 4 players"),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SAssignNew(AddressBox,SEditableTextBox).Text(FText::FromString(TEXT("127.0.0.1"))).Font(FCoreStyle::GetDefaultFontStyle("Regular",16))]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(12).OnClicked_Lambda([this](){FString Address=AddressBox->GetText().ToString().TrimStartAndEnd();bool Valid=!Address.IsEmpty();for(TCHAR C:Address)if(!FChar::IsAlnum(C)&&C!=TEXT('.')&&C!=TEXT(':')&&C!=TEXT('-'))Valid=false;if(Valid){HideMenu();ClientTravel(Address,TRAVEL_Absolute);}return FReply::Handled();})[Label(TEXT("CONNECT TO EXPEDITION"),14)]]
-      +SVerticalBox::Slot().AutoHeight().Padding(0,18,0,6)[Label(TEXT("ON FOOT  WASD move / F scan / LMB mine / V sidearm / E interact\nSURVIVAL  I backpack / 1-8 craft, cook or eat / R reload\nLAW  G surrender near police / wait for release in Civic jail\nCITY  P phone / arrows pages / 1-8 actions / P or Esc close\nWalk through signed doors / 1-3 dialogue / Backspace end\nFLIGHT  WASD thrust / mouse steer / Space rise / Ctrl descend\nShift boost / LMB lasers / E land below 10 m or exit\nSPACE above 60 km / Tab target / J cruise / B black hole / H next star\nFly directly into or out of the atmosphere."),11)]
+      +SVerticalBox::Slot().AutoHeight().Padding(0,18,0,6)[Label(TEXT("ON FOOT  WASD move / F scan / LMB mine / V sidearm / E interact\nSURVIVAL  I backpack / 1-8 craft, cook or eat / R reload\nLAW  Escape pursuit / watch for armed security drones\nCITY  P phone / arrows pages / 1-8 actions / P or Esc close\nWalk through signed doors / 1-3 dialogue / Backspace end\nFLIGHT  WASD thrust / mouse steer / Space rise / Ctrl descend\nShift boost / LMB lasers / E land below 10 m or exit\nSPACE above 60 km / Tab target / J cruise / B black hole / H next star\nFly directly into or out of the atmosphere."),11)]
       +SVerticalBox::Slot().AutoHeight().Padding(0,4)[SNew(SButton).ContentPadding(10).OnClicked_Lambda([this](){ServerSave();ConsoleCommand(TEXT("quit"));return FReply::Handled();})[Label(TEXT("SAVE AND QUIT"),13)]]
     ]];
     MenuWidget=SNew(SVoyagerMenu).OnClose_Lambda([this](){HideMenu();})[Content];GEngine->GameViewport->AddViewportWidgetContent(MenuWidget.ToSharedRef(),100);

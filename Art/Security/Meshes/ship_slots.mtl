@@ -1,0 +1,16 @@
+newmtl Paint
+Kd .5 .5 .5
+newmtl Trim
+Kd .5 .5 .5
+newmtl Metal
+Kd .5 .5 .5
+newmtl Glass
+Kd .5 .5 .5
+newmtl Light
+Kd .5 .5 .5
+newmtl Red
+Kd .5 .5 .5
+newmtl Blue
+Kd .5 .5 .5
+newmtl Rubber
+Kd .5 .5 .5

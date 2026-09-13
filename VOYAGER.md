@@ -26,7 +26,6 @@ The settlement marker leads to a city about **320 metres** from the landing site
 - **F5** saves the expedition. **Escape** opens the menu.
 - **I** opens the backpack; **1–8** selects food, crafting and equipment actions. **I**, **Escape** or **Backspace** closes it; **P** switches to the city phone.
 - **R** reloads the sidearm's 24-shot magazine in 1.4 seconds. Each shot consumes one energy cell; the backpack can craft more.
-- **G** surrenders to observing security while wanted, on foot and within 250 metres. Equipment and boarding are secured during custody.
 
 ## Flying
 
@@ -76,7 +75,7 @@ The Work & Home page shows your actual employer and residential building. Enter 
 
 Justice shows citations and recorded offenses. Pay an outstanding fine inside a Civic Security building; credits transfer to the public treasury and the record remains. Hiding from a patrol does not pay a citation. News reports real population, employment, stock, money and sanitation totals. It uses rules and current city data, so no AI service is required.
 
-Relocation preserves resident identity, possessions and needs while assigning a real local home and job. It does not create cross-planet property ownership. The eight-good economy now sits alongside a bounded police/custody system and destructible procedural buildings. Full civilian traffic, public transit, mortgages, trials, a prison economy, voxel terrain destruction and economic disasters remain future work.
+Relocation preserves resident identity, possessions and needs while assigning a real local home and job. It does not create cross-planet property ownership. The eight-good economy now sits alongside a bounded police pursuit system and destructible procedural buildings. Full civilian traffic, public transit, mortgages, trials, voxel terrain destruction and economic disasters remain future work.
 
 ## Field supplies and demolition
 
@@ -88,17 +87,17 @@ Charges detonate after three seconds with a 22 m damage radius. Window damage re
 
 ## Combat and progression
 
-Ground response now adds one armored hover cruiser and up to four armed officers per suspect, alongside civic guards and up to four patrol ships. Ships descend near surface suspects. Ground units warn for four seconds and fire at two stars or above; opaque cover blocks fire. **G** surrenders under observation within 250 m. Healthy surrender preserves current health; incapacitation under observation uses the ordinary medical recovery and can also lead to arrest. A Civic holding cell lasts 20 seconds plus eight per wanted star, then releases the player while retaining citation balances and records. Server checks block equipment use and escape from the cell. The host's remaining sentence resumes on reload; active pursuit and joining players' custody remain session state. Shared system travel waits until every crew member is free.
+Ground response includes one Vesper hover cruiser, up to four armed officers and one to three Sentinel attack drones per suspect, alongside civic guards and patrol ships. Drones arrive at two or more stars near the surface, follow observed positions and fire after a warning. Opaque cover blocks sight; glass stops shots. Drones can be shot down. The cruiser has a shaped automotive body, windows, emergency lights and four lift pods. Jail and surrender are removed: incapacitation uses ordinary medical recovery, and old saved sentences are discarded. Citations remain payable at Civic Security.
 
 **V** equips a pulse sidearm. Residents have authoritative health, react to assault, and can die; their non-graphic collapse, stopped routine and closed conversations replicate to co-op players. Skin, fitted clothing, hair, eyes and skeletal animation use documented CC0 MakeHuman assets and original clips.
 
-Observed attacks and property damage trigger emergency reports and **one to five wanted stars**. Repeated assault, homicide and attacks on law enforcement escalate the response. Cases are independent for co-op players. Sensors follow the last observed position when a suspect is hidden, and stand down after 35–75 seconds without contact. Opaque walls and roofs break sight; window glass stops shots but allows vision. Patrol shots have a short targeting warning so movement can evade them. Units can be damaged and destroyed; doing so escalates the case. Escape in your ship, hide inside a building, leave the star system before arrest, or surrender. Emergency recovery preserves cargo; an observed incapacitated suspect can be arrested instead of returning to the landing site.
+Observed attacks and property damage trigger emergency reports and **one to five wanted stars**. Repeated assault, homicide and attacks on law enforcement escalate the response. Cases are independent for co-op players. Sensors follow the last observed position when a suspect is hidden, and stand down after 35–75 seconds without contact. Opaque walls and roofs break sight; window glass stops shots but allows vision. Patrol shots have a short targeting warning so movement can evade them. Units can be damaged and destroyed; doing so escalates the case. Escape in your ship, hide inside a building, or leave the star system. Emergency recovery preserves cargo and returns you to the landing area without a jail sentence.
 
 The scout, corsairs and patrols use a shared original Kestrel airframe with separate liveries, a framed canopy, recessed engines, retracting landing gear, streamed PBR materials and three mesh detail levels. Patrols have flashing beacons and a search light.
 
 Red corsair ships appear in orbit. Their shots are telegraphed, so move or boost to evade. Your scout has shields and hull integrity; shields start recharging after six seconds without damage. Defeating a corsair awards 25 minerals. Each laser upgrade adds five damage. Emergency recovery repairs your ship if it is destroyed and preserves cargo.
 
-Solo and host progression save automatically on rewards, upgrades, travel and successful city transactions. The save contains the current system and planet, the host's minerals and field item stacks, upgrades, pirate kills, discoveries, building damage, remaining custody and city archives. City archives preserve resident accounts, inventory, needs, employment, citations and deaths as deterministic deltas. **F5**, **Escape → Save Expedition**, and **Save and Quit** also request a save. A resumed expedition starts on foot at the last selected planet's landing site, or returns to Civic custody if a sentence remains; other exact walking and flight positions are not saved. Legacy saves receive 120 starting energy cells.
+Solo and host progression save automatically on rewards, upgrades, travel and successful city transactions. The save contains the current system and planet, the host's minerals and field item stacks, upgrades, pirate kills, discoveries, building damage and city archives. City archives preserve resident accounts, inventory, needs, employment, citations and deaths as deterministic deltas. **F5**, **Escape → Save Expedition**, and **Save and Quit** also request a save. A resumed expedition starts on foot at the last selected planet's landing site; exact walking and flight positions are not saved. Old jail sentences are ignored and cleared when saving. Legacy saves receive 120 starting energy cells.
 
 The save is `Voyager-Expedition.sav` under the running game's `Saved/SaveGames` folder. For the supplied standalone layout, that folder is `Packaged/Riftbound/Windows/Riftbound/Saved/SaveGames`. The editor-run game and packaged game use separate Saved folders. Development tests use a separate `Voyager-Automation` slot. A client's save command saves the host's expedition; it does not create persistent client progression.
 
@@ -112,9 +111,9 @@ The host runs one shared star system. Players have separate ships and cargo and 
 
 ## Build and test
 
-Version **0.9.0** validation is tracked in [VOYAGER_FRONTIERS.md](docs/phases/VOYAGER_FRONTIERS.md). Current source features and pending runtime checks are listed separately; the 0.8 results below are historical.
+Version **0.9.1** validation is tracked in [VOYAGER_SECURITY.md](docs/phases/VOYAGER_SECURITY.md). Earlier results below are historical.
 
-- `Scripts/Test-VoyagerPolice.ps1`: warnings, officer damage, cover, dispatch, surrender, custody, release, saved sentences and incapacitation arrest. Supports `-Network`, `-Render` and `-Packaged`.
+- `Scripts/Test-VoyagerPolice.ps1`: warnings, attributed officer/drone damage, cover, dispatch, drone death and replication, innocent peer independence, legacy sentence removal and medical recovery. Supports `-Network`, `-Render` and `-Packaged`.
 - `Scripts/Test-VoyagerHunt.ps1`: animal damage/death, harvest validation and inventory. Supports `-Network`, `-Render` and `-Packaged`.
 - `Scripts/Test-VoyagerSurvival.ps1`: recipes, food/medical effects, inventory transactions and charge placement. Supports `-Render` and `-Packaged`.
 - `Scripts/Test-VoyagerCosmos.ps1`: atmosphere/orbit fixtures, seeded anomaly visuals, survey flight and hazards. Supports `-Render` and `-Packaged`.

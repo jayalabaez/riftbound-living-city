@@ -233,21 +233,21 @@ namespace VoyagerSurvivalAudit
             auto* Custody=NewObject<UVoyagerSave>();const auto View=Life->BuildView(PC);
             Custody->JailSeconds=3;Custody->JailSystem=State->SystemSeed;Custody->JailPlanet=View.CityKey/3;Custody->JailSite=View.CityKey%3;
             Law->RestoreCustody(PC,Custody);
-            if(!Law->IsJailed(PC)){Fail(TEXT("CUSTODY_FIXTURE_RESTORED"));return;}
+            if(Law->IsJailed(PC)){Fail(TEXT("LEGACY_CUSTODY_STILL_ACTIVE"));return;}
             Advance(Now);return;
         }
         case 21:
         {
             if(Elapsed<.8)return;
-            auto* Law=AVoyagerLaw::Find(World);if(!Law||!Law->IsJailed(PC)){Fail(TEXT("CUSTODY_CARE_FIXTURE_EXPIRED"));return;}
+            auto* Law=AVoyagerLaw::Find(World);if(!Law||Law->IsJailed(PC)){Fail(TEXT("LEGACY_CUSTODY_NOT_REMOVED"));return;}
             Before(PS);PC->ServerSurvivalAction(5);
-            if(Life->ApplyFieldCare(PC,200,80,350)||!FMath::IsNearlyEqual(Pawn->Health,20.f)||!Unchanged(PS))
-            {Fail(TEXT("JAILED_CARE_ACCEPTED_OR_SPENT_ITEM"));return;}
-            Pass(TEXT("JAILED_CARE_REJECTS_WITHOUT_ITEM_LOSS"));Advance(Now);return;
+            if(!FMath::IsNearlyEqual(Pawn->Health,55.f)||PS->ItemCount(EVoyagerItem::Medkit)!=1)
+            {Fail(TEXT("LEGACY_CUSTODY_BLOCKS_CARE"));return;}
+            Pass(TEXT("LEGACY_SENTENCE_DOES_NOT_BLOCK_CARE"));Advance(Now);return;
         }
         case 22:
             if(Elapsed<3)return;
-            if(!HealthMatches(Life,PC,Pawn,20,0)){Fail(TEXT("REJECTED_CARE_CHANGED_LATER_HEALTH"));return;}
+            if(!HealthMatches(Life,PC,Pawn,55,0)){Fail(TEXT("CARE_HEALTH_NOT_PERSISTED"));return;}
             Run->Finished=true;UE_LOG(LogTemp,Display,TEXT("VOYAGER SURVIVAL AUDIT COMPLETE PASS checks=%d seconds=%.2f"),Run->Checks,Now-Run->Started);
             FPlatformMisc::RequestExit(false);return;
         default:Fail(TEXT("INVALID_STAGE"));return;

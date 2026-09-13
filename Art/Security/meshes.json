@@ -1,0 +1,150 @@
+{
+  "SM_VesperCruiser": {
+    "slots": [
+      "Paint",
+      "Trim",
+      "Metal",
+      "Glass",
+      "Light",
+      "Red",
+      "Blue",
+      "Rubber"
+    ],
+    "lods": [
+      {
+        "file": "Art/Security/Meshes/SM_VesperCruiser_LOD0.obj",
+        "triangles": 10852,
+        "vertices": 11056,
+        "bounds_cm": [
+          [
+            -260.0,
+            263.0
+          ],
+          [
+            -141.0,
+            141.0
+          ],
+          [
+            -6.902113032590307,
+            158.5
+          ]
+        ],
+        "sha256": "0f1065cdb32e707c5478e603874ff4c117a4a50773dd6483c7e438462293c830"
+      },
+      {
+        "file": "Art/Security/Meshes/SM_VesperCruiser_LOD1.obj",
+        "triangles": 7300,
+        "vertices": 8976,
+        "bounds_cm": [
+          [
+            -260.0,
+            263.0
+          ],
+          [
+            -141.0,
+            141.0
+          ],
+          [
+            -7.0,
+            158.5
+          ]
+        ],
+        "sha256": "70f27907ecbea153a47aae7dfb085e0f54f9888305105ad5e7706a83830180e1"
+      },
+      {
+        "file": "Art/Security/Meshes/SM_VesperCruiser_LOD2.obj",
+        "triangles": 3908,
+        "vertices": 5332,
+        "bounds_cm": [
+          [
+            -260.0,
+            261.5
+          ],
+          [
+            -141.0,
+            141.0
+          ],
+          [
+            -6.732050807568878,
+            158.5
+          ]
+        ],
+        "sha256": "c84798218bcdbec73d374f55777130e098ab3168ff3f58d3fbc6ea013354427d"
+      }
+    ]
+  },
+  "SM_SentinelDrone": {
+    "slots": [
+      "Paint",
+      "Trim",
+      "Metal",
+      "Glass",
+      "Light",
+      "Red",
+      "Blue",
+      "Rubber"
+    ],
+    "lods": [
+      {
+        "file": "Art/Security/Meshes/SM_SentinelDrone_LOD0.obj",
+        "triangles": 8928,
+        "vertices": 6326,
+        "bounds_cm": [
+          [
+            -83.0,
+            78.0
+          ],
+          [
+            -103.0,
+            103.0
+          ],
+          [
+            -35.0,
+            22.5
+          ]
+        ],
+        "sha256": "a28cdf97fe12965ceb189b0cc15eb501df07ad03ed201c5256e28273d0a5bbc6"
+      },
+      {
+        "file": "Art/Security/Meshes/SM_SentinelDrone_LOD1.obj",
+        "triangles": 4836,
+        "vertices": 3932,
+        "bounds_cm": [
+          [
+            -83.0,
+            78.0
+          ],
+          [
+            -103.0,
+            103.0
+          ],
+          [
+            -35.0,
+            22.5
+          ]
+        ],
+        "sha256": "9656cb79aad987132992a8914dc21baab3ab1f7525f25fbf694de1f0d5182f9d"
+      },
+      {
+        "file": "Art/Security/Meshes/SM_SentinelDrone_LOD2.obj",
+        "triangles": 2464,
+        "vertices": 2514,
+        "bounds_cm": [
+          [
+            -83.0,
+            78.0
+          ],
+          [
+            -103.0,
+            103.0
+          ],
+          [
+            -35.0,
+            22.5
+          ]
+        ],
+        "sha256": "55327651ab28c3f1e435bb3fca0a5bf6ca401fb8a703f2db05369ce5876e7bc0"
+      }
+    ]
+  }
+}

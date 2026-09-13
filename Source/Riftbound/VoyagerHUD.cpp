@@ -165,7 +165,7 @@ void AVoyagerHUD::DrawHUD()
             }
         }
         Center(Expedition->bLawSearching?TEXT("SEARCHING LAST KNOWN POSITION"):TEXT("WANTED / PATROL PURSUIT"),VW*.5f,74,.53f,Expedition->bLawSearching?Amber:Red,270);
-        Center(Expedition->bLawSearching?FString::Printf(TEXT("Stay out of sight  /  %.0f s"),Expedition->WantedSearchSeconds):TEXT("G surrender / break line of sight to escape"),VW*.5f,98,.44f,Muted,270);
+        Center(Expedition->bLawSearching?FString::Printf(TEXT("Stay out of sight  /  %.0f s"),Expedition->WantedSearchSeconds):TEXT("Break line of sight to escape"),VW*.5f,98,.44f,Muted,270);
         for(TActorIterator<AVoyagerPatrolShip> It(GetWorld());It;++It)
         {
             FVector2D Screen;
@@ -429,11 +429,6 @@ void AVoyagerHUD::DrawHUD()
     }
     if (!Action.IsEmpty())
     {
-        if(auto Law=AVoyagerLaw::Find(GetWorld()))
-        {
-            const auto Custody=Law->GetCustody(PC);
-            if(Custody.bJailed){Action=FString::Printf(TEXT("CIVIC CUSTODY  /  %.0f SECONDS"),Custody.SecondsRemaining);SubAction=TEXT("Serving sentence. Your expedition and cargo are retained.");}
-        }
         const float ActionWidth = FMath::Min(790.f, VW - 760.f);
         Panel(CX - ActionWidth * .5f, VH - 149, ActionWidth, 78);
         Center(Action, CX, VH - 132, .77f, Mint, ActionWidth - 28);
@@ -463,7 +458,7 @@ void AVoyagerHUD::DrawHUD()
         Panel(CX - 360, VH - 226, 720, 52);
         Center(PC->Notice, CX, VH - 210, .69f, White, 684);
     }
-    const FString Footer = Ship ? TEXT("WASD THRUST   SHIFT BOOST   SPACE / CTRL VERTICAL   LMB FIRE   TAB TARGET   J CRUISE   B ANOMALY   H NEXT STAR") : TEXT("WASD MOVE   SHIFT SPRINT   SPACE JUMP   E INTERACT   V SIDEARM   R RELOAD   I BACKPACK   P PHONE   G SURRENDER");
+    const FString Footer = Ship ? TEXT("WASD THRUST   SHIFT BOOST   SPACE / CTRL VERTICAL   LMB FIRE   TAB TARGET   J CRUISE   B ANOMALY   H NEXT STAR") : TEXT("WASD MOVE   SHIFT SPRINT   SPACE JUMP   E INTERACT   V SIDEARM   R RELOAD   I BACKPACK   P PHONE   WATCH FOR DRONES");
     Center(Footer, CX, VH - 27, .48f, Muted);
 
     if (Ship && Ship->DamageFeedback > 0)

@@ -4,7 +4,7 @@ An original procedural space-adventure prototype in Unreal Engine 5.8.2. Explore
 
 **[Build from source](BUILDING.md)** using Git LFS and Unreal Engine 5.8. This project also contains the separate **[Living City](LIVINGCITY.md)** simulation mode.
 
-Version **0.9.0** adds building damage and physical debris, armed ground police and custody, hunting and field crafting, improved citizen gait and eyes, and procedural black-hole encounters. The [0.9 milestone checklist](docs/phases/VOYAGER_FRONTIERS.md) records validation status; earlier release results do not validate this build.
+Version **0.9.1** removes jail, adds armed pursuit drones and replaces the police cruiser with an original hovering sedan. Building destruction, hunting, crafting and procedural worlds remain available. The [security milestone checklist](docs/phases/VOYAGER_SECURITY.md) records current validation.
 
 **Double-click [Play Voyager.cmd](Play%20Voyager.cmd), [Play Riftbound.cmd](Play%20Riftbound.cmd), or the VOYAGER desktop shortcut.** The launcher uses the standalone Windows build when available, otherwise the compiled game through the installed Unreal Engine.
 
@@ -34,7 +34,7 @@ The simulation keeps **54,000 resident records** across the system's 15 cities, 
 
 **V** switches the extraction tool to a pulse sidearm; **left mouse** fires. Reported attacks on residents or patrols raise a **one-to-five-star wanted level** and city citations. Patrol ships respond, pursue visible suspects and search the last observed position when sight is lost. Hide behind opaque building walls or escape in your ship until the search ends; outstanding fines remain in the city account and can be paid at Civic Security. See [character credits](Art/Characters/PROVENANCE.md) and [ship sources](Art/Ships/PROVENANCE.md).
 
-Armored hover cruisers, armed officers and civic guards now join the response, and ships descend near surface suspects. Gunfire starts at two stars after a warning. **G** surrenders on foot within sight and 250 metres of observing security. Incapacitation can also lead to a timed Civic holding cell. The host's remaining sentence survives saving and reloading; citations remain payable after release. Shared **H** system jumps are unavailable while any crew member is in custody.
+Ground response includes one Vesper hover cruiser, up to four armed officers and one to three Sentinel attack drones per suspect, alongside civic guards and patrol ships. Drones arrive at two or more stars near the surface, follow observed positions and fire after a warning. Opaque cover blocks sight; glass stops shots. Drones can be shot down. The cruiser has a shaped automotive body, windows, emergency lights and four lift pods. Jail and surrender are removed: incapacitation uses ordinary medical recovery, and old saved sentences are discarded. Citations remain payable at Civic Security.
 
 Building windows can break and damaged towers lose upper floors before collapsing. Unreal's native **Chaos rigid bodies** animate a bounded debris pool; structural damage is saved separately. Black-hole encounters use original procedural visuals: **B** in orbit cruises to a safe survey point; **Tab + J** returns to a planet. The dark horizon, disk and halo are a visual approximation with a gameplay tidal hazard, not a general-relativistic ray tracer. No paid Fab plugin or asset was acquired for this feature pass.
 

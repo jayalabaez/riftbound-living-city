@@ -32,7 +32,7 @@ if($Render){$arguments+=@('-windowed','-ResX=1280','-ResY=720','-VoyagerPoliceCa
 $before=@(Save-Hashes)
 $owned=$null;$peer=$null;$failure=$null;$checks=[ordered]@{};$log='';$peerText=''
 $clock=[Diagnostics.Stopwatch]::StartNew()
-$pattern='VOYAGER POLICE AUDIT FAIL\b|Fatal error\b|LowLevelFatalError|Assertion failed\b|Ensure condition failed|Failed to compile Material|missing usage flag|VOYAGER CHARACTER MISSING'
+$pattern='VOYAGER POLICE AUDIT FAIL\b|Fatal error\b|LowLevelFatalError|Assertion failed\b|Ensure condition failed|Failed to compile Material|missing usage flag|VOYAGER CHARACTER MISSING|VOYAGER SECURITY MISSING'
 try{
     $owned=Start-Process -FilePath $executable -ArgumentList $arguments -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
     Write-Host "Police audit PID $($owned.Id), $variant; evidence $runDirectory"
@@ -53,18 +53,17 @@ try{
 }catch{$failure=$_.Exception.Message}finally{
     foreach($process in @($owned,$peer)){if($process -and -not $process.HasExited){Stop-Process -InputObject $process -Force;$process.WaitForExit(10000)|Out-Null}}
     $clock.Stop();$log=Read-Shared $logPath;$peerText=Read-Shared $peerLog
-    foreach($name in @('INNOCENT_SURRENDER_REJECTED','WITNESSED_CRIME_WANTED','WARNING_GRACE','OFFICER_REAL_WEAPON_DAMAGE','OPAQUE_COVER_BLOCKS_SENSOR','UNCOVERED_SENSOR_REACQUIRES','ARMORED_CRUISER_DISPATCHED','REINFORCEMENT_OFFICERS_DISPATCHED','PATROL_DESCENDS_TO_SURFACE','SURRENDER_ARREST','SURRENDER_PRESERVES_HEALTH','ARREST_STANDS_DOWN_PURSUIT','ARREST_CARGO_PRESERVED','BOUNDED_CUSTODY_TIMER','CUSTODY_SAVE_ENCODING','CUSTODY_BLOCKS_BOARDING_AND_WARP','CUSTODY_REJECTS_ESCAPE_POSITION','TIMED_RELEASE','RELEASE_OWNER_STATE','CUSTODY_SAVE_RESTORES_SENTENCE','INCAPACITATION_ARRESTS_AND_RECOVERS')){
+    foreach($name in @('JAIL_REMOVED_AND_LEGACY_SAVE_CLEARED','WITNESSED_CRIME_WANTED','WARNING_GRACE','OFFICER_REAL_WEAPON_DAMAGE','WANTED_LEVEL_DISPATCHES_DRONE','DRONE_FLIES_AND_DAMAGES_CRIMINAL','HOVER_CAR_DISPATCHED','SHAPED_MODELS_THREE_LODS','SOLID_COVER_BLOCKS_DRONE','DRONE_REACQUIRES_SIGHT','DRONE_CAN_BE_SHOT_DOWN','PURSUIT_END_CLEARS_DRONES','LETHAL_DAMAGE_RECOVERS_WITHOUT_JAIL')){
         $checks[$name]=$log -match ("VOYAGER POLICE AUDIT PASS $name\b")
     }
     $checks['COMPLETE']=$log -match 'VOYAGER POLICE AUDIT COMPLETE PASS'
     $checks['NO_ENGINE_ERRORS']=$log -notmatch $pattern
-    if($Network){foreach($name in @('REMOTE_GROUND_UNITS_REPLICATED','REMOTE_WANTED_REPLICATED','REMOTE_CUSTODY_REPLICATED','INNOCENT_PEER_FREE')){$checks[$name]=$peerText -match ("VOYAGER POLICE AUDIT PASS $name\b")};$checks['PEER_COMPLETE']=$peerText -match 'VOYAGER POLICE AUDIT CLIENT COMPLETE PASS'}
+    if($Network){foreach($name in @('REMOTE_DRONE_AND_MOTION','REMOTE_AUTHORITY_GUARD','REMOTE_DRONE_DEATH','INNOCENT_PEER_FREE')){$checks[$name]=$peerText -match ("VOYAGER POLICE AUDIT PASS $name\b")};$checks['PEER_COMPLETE']=$peerText -match 'VOYAGER POLICE AUDIT CLIENT COMPLETE PASS'}
     $after=@(Save-Hashes);$preserved=$true
     for($i=0;$i -lt $before.Count;$i++){if($before[$i].hash -ne $after[$i].hash){$preserved=$false}}
     $checks['NORMAL_SAVES_UNCHANGED']=$preserved
     if($Render){
-        foreach($name in @('RESPONSE_CAMERA_READY','CUSTODY_CAMERA_READY','RELEASE_CAMERA_READY')){$checks[$name]=$log -match ("VOYAGER POLICE AUDIT PASS $name\b")}
-        foreach($name in @('ArmedResponse','CivicHoldingCell','CivicRelease')){$path=Join-Path $runDirectory ($name+'.png');$checks["CAPTURE_$name"]=(Test-Path -LiteralPath $path) -and (Get-Item -LiteralPath $path).Length -gt 10000}
+        foreach($name in @('DroneAndHoverCar')){$path=Join-Path $runDirectory ($name+'.png');$checks["CAPTURE_$name"]=(Test-Path -LiteralPath $path) -and (Get-Item -LiteralPath $path).Length -gt 10000}
     }
     if(-not $failure -and @($checks.Values|Where-Object{-not $_}).Count){$failure='Required checks failed: '+(($checks.Keys|Where-Object{-not $checks[$_]}) -join ', ')}
     $report=[ordered]@{status=$(if($failure){'failed'}else{'passed'});variant=$variant;elapsed_seconds=[Math]::Round($clock.Elapsed.TotalSeconds,2);checks=$checks;failure=$failure;log=$logPath;peer_log=$peerLog;normal_saves_before=$before;normal_saves_after=$after;evidence=@([regex]::Matches($log,'VOYAGER POLICE AUDIT PASS[^\r\n]*')|ForEach-Object{$_.Value})}

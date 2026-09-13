@@ -11,7 +11,7 @@ class RIFTBOUND_API AVoyagerAuditSignal : public AActor
 public:
     AVoyagerAuditSignal();
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
-    UPROPERTY(Replicated) uint8 Kind=0; // 1 hunting; 2 destruction.
+    UPROPERTY(Replicated) uint8 Kind=0; // 1 hunting; 2 destruction; 3 security drones.
     UPROPERTY(Replicated) TObjectPtr<AActor> Subject;
     UPROPERTY(Replicated) uint8 Acknowledged=0;
     UFUNCTION(Server,Reliable) void ServerAcknowledge(uint8 Phase);

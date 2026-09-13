@@ -47,8 +47,8 @@ namespace
         for(int32 I=0;I<Items.Num()&&I<Input.Num();++I)Items[I]=FMath::Clamp(Input[I],0,999);
         return Items;
     }
-    bool ValidSavedCustody(const UVoyagerSave* Save)
-    {return Save&&FMath::IsFinite(Save->JailSeconds)&&Save->JailSeconds>0&&Save->JailSystem==Save->SystemSeed&&Save->JailPlanet>=0&&Save->JailPlanet<Voyager::PlanetCount&&Save->JailSite>=0&&Save->JailSite<AVoyagerSettlement::SitesPerPlanet;}
+    bool ValidSavedCustody(const UVoyagerSave*)
+    {return false;} // Version 0.9.1 discards legacy sentences on load.
     bool InCustody(AController* C)
     {if(C)if(auto Law=AVoyagerLaw::Find(C->GetWorld()))return Law->IsJailed(C);return false;}
     void Tell(AController* C,const FString& Message){if(auto PC=Cast<AVoyagerController>(C))PC->Notify(Message);}
@@ -138,7 +138,7 @@ void AVoyagerGameMode::PostLogin(APlayerController* NewPlayer)
             PS->Minerals=FMath::Clamp(LoadedSave->Minerals,0,100000000);PS->PirateKills=FMath::Max(0,LoadedSave->PirateKills);PS->Upgrades=FMath::Clamp(LoadedSave->Upgrades,0,5);
             PS->Visited=LoadedSave->Visited;PS->Discoveries=PS->Visited.Num();PS->Items=SafeInventory(LoadedSave->Items,LoadedSave->Version<4);bLoadedHost=true;
             CapturedJailSeconds=ValidSavedCustody(LoadedSave)?LoadedSave->JailSeconds:0;
-            CapturedJailSystem=LoadedSave->JailSystem;CapturedJailPlanet=LoadedSave->JailPlanet;CapturedJailSite=LoadedSave->JailSite;
+            CapturedJailSystem=0;CapturedJailPlanet=0;CapturedJailSite=0;
             PS->ForceNetUpdate();
         }
         else PS->Items=SafeInventory(PS->Items);
@@ -177,12 +177,7 @@ void AVoyagerGameMode::PostLogin(APlayerController* NewPlayer)
         }
         Tell(PC,TEXT("Welcome, Voyager. F scans this planet. E boards your ship. Your expedition autosaves."));
     }),.6f,false);
-    if(bRestoreHost&&ValidSavedCustody(LoadedSave))
-    {
-        // Retry in Tick after the normal arrival/city setup. An early autosave must
-        // retain the loaded sentence until the authority has actually restored it.
-        bPendingCustodyRestore=true;CustodyRestoreController=NewPlayer;
-    }
+
 }
 AVoyagerShip* AVoyagerGameMode::ShipFor(AController* Pilot)
 {
@@ -279,12 +274,6 @@ void AVoyagerGameMode::FinishTravel()
 void AVoyagerGameMode::Tick(float D)
 {
     Super::Tick(D);
-    if(bPendingCustodyRestore&&GetWorld()->GetTimeSeconds()>=1.f&&CustodyRestoreController.IsValid())
-        if(auto Law=AVoyagerLaw::Find(GetWorld()))
-        {
-            Law->RestoreCustody(CustodyRestoreController.Get(),LoadedSave);
-            if(Law->IsJailed(CustodyRestoreController.Get()))bPendingCustodyRestore=false;
-        }
     PumpSave(false);
     if(bSaveRequested&&!bEndingPlay&&!SaveEncoding.IsValid()&&!SaveWriting.IsValid()&&FPlatformTime::Seconds()>=NextAutosaveTime)
     {
@@ -390,8 +379,7 @@ bool AVoyagerGameMode::StartSave(bool bWaitForCommands,AVoyagerCityLife* SaveSou
     }
     Save->Minerals=CapturedMinerals;Save->PirateKills=CapturedPirateKills;
     Save->Upgrades=CapturedUpgrades;Save->Visited=CapturedVisited;
-    Save->Items=CapturedItems;Save->JailSeconds=CapturedJailSeconds;Save->JailSystem=CapturedJailSystem;
-    Save->JailPlanet=CapturedJailPlanet;Save->JailSite=CapturedJailSite;
+    Save->Items=CapturedItems;Save->JailSeconds=0;Save->JailSystem=0;Save->JailPlanet=0;Save->JailSite=0;
     PendingSave=Save;ActiveSaveSerial=++NextSaveSerial;ActiveSaveSlot=SaveSlot();
     if(!bSaveSystemPrimed)
     {
@@ -446,9 +434,6 @@ void AVoyagerGameMode::RecoverExplorer(AVoyagerCharacter* Explorer)
     auto C=Explorer->GetController();auto State=GetGameState<AVoyagerState>();if(!State)return;
     if(auto Law=AVoyagerLaw::Find(GetWorld()))
     {
-        if(Law->TryArrest(C))return;
-        if(Law->IsJailed(C))
-        {Explorer->Health=100.f;Explorer->ForceNetUpdate();if(auto Life=AVoyagerCityLife::Find(GetWorld()))Life->RecoverPlayer(C);return;}
         Law->Resolve(C,false);
     }
     const int32 Planet=Voyager::NearestPlanet(State->SystemSeed,Explorer->GetActorLocation());

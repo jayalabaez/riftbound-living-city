@@ -11,7 +11,8 @@ namespace
 bool Enabled(uint8 Kind)
 {
     return (Kind==1&&FParse::Param(FCommandLine::Get(),TEXT("VoyagerHuntAudit")))||
-        (Kind==2&&FParse::Param(FCommandLine::Get(),TEXT("VoyagerDestructionAudit")));
+        (Kind==2&&FParse::Param(FCommandLine::Get(),TEXT("VoyagerDestructionAudit")))||
+        (Kind==3&&FParse::Param(FCommandLine::Get(),TEXT("VoyagerPoliceAudit")));
 }
 }
 AVoyagerAuditSignal::AVoyagerAuditSignal()

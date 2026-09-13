@@ -266,7 +266,7 @@ Build in this order. Do not reorder.
 
 ## 9. Coexistence with RIFTBOUND
 
-**Current work: Voyager Frontiers 0.9, 2026-09-13.** The owner explicitly requested that the
+**Current work: Voyager Security 0.9.1, 2026-09-13.** The owner explicitly requested that the
 attached Living City brief be added **into Riftbound**. This supersedes the previous
 alongside-only restriction and the prohibition on editing Voyager. The original standalone
 Living City mode remains available; it does not run behind Voyager.
@@ -284,11 +284,14 @@ Living City mode remains available; it does not run behind Voyager.
 - Voyager's natural art, spherical terrain, ship flight and existing accessible buildings
   remain its presentation. The attached flat-shaded capsule art direction does not replace
   the owner's newer realism request.
-- The latest request adds building destruction and native Chaos debris, armed ground police
-  and saved custody, wildlife hunting and field supplies, citizen gait/eyes, improved
+- The earlier Frontiers request adds building destruction and native Chaos debris, armed ground police
+  and (since removed) saved custody, wildlife hunting and field supplies, citizen gait/eyes, improved
   atmosphere presentation and seeded black-hole encounters to Voyager. This is the active
-  bounded milestone; the separate Living City transport/disaster phase order does not block it.
-- Existing authoritative Voyager actors own building integrity, police/custody and animal
+  foundation; the separate Living City transport/disaster phase order does not block it.
+- The latest request removes jail, arrests and surrender, adds armed drones to wanted response,
+  and replaces the police car with an original hover sedan. Legacy sentences are ignored and
+  cleared on save. This overrides every earlier Voyager custody requirement.
+- Existing authoritative Voyager actors own building integrity, police pursuit and animal
   combat. Chaos animates temporary debris; it never decides saved building damage or writes
   to `LivingCitySim`. This milestone does not implement the pure structural-support solver,
   Geometry Collection fracture, civilian traffic, voxel terrain damage or economic disasters.
@@ -298,7 +301,8 @@ Living City mode remains available; it does not run behind Voyager.
   No paid Fab plugin or asset was acquired for this pass. Black-hole disk/halo
   presentation is a visual approximation with a gameplay hazard, not general-relativistic
   ray tracing or an astrophysical gravity simulation.
-- Current milestone and verification checklist: [VOYAGER_FRONTIERS.md](docs/phases/VOYAGER_FRONTIERS.md).
+- Current milestone and verification checklist: [VOYAGER_SECURITY.md](docs/phases/VOYAGER_SECURITY.md).
+  Version 0.9 evidence is retained in [VOYAGER_FRONTIERS.md](docs/phases/VOYAGER_FRONTIERS.md).
   Version 0.8 evidence is retained in [VOYAGER_CITY_LIFE.md](docs/phases/VOYAGER_CITY_LIFE.md).
   Earlier `PHASE_*.md` files describe the separate Living City mode and historical milestones;
   they are not evidence that their entire roadmap is implemented in Voyager.
