@@ -1,0 +1,7 @@
+# Original Voyager surface texture
+
+`voyager_ground_albedo.png` was generated with the built-in OpenAI image-generation tool for this project on 2026-09-07. Original generated output is retained in the Codex generated-images directory. No external photographs were downloaded. The image is an albedo source; Unreal generates material roughness, tint and surface shading.
+
+Prompt:
+
+Create an original seamless tileable photorealistic game ground albedo texture for a premium procedural planetary exploration game. One square texture only, filling the entire image edge to edge, no border, no text, no swatches, no montage. Orthographic directly overhead scan of dry weathered grey-taupe basalt bedrock interspersed with fine mineral grit, small rounded pebbles and irregular fractured stone plates. Convincing sub-centimeter grains and decimeter cracks, non-repeating natural stochastic distribution, balanced medium frequency details without a single dominant landmark. Neutral pale grey and muted warm mineral tones so the engine can tint it into ice, sand, mossy soil, alien violet and volcanic biomes. All four opposing edges should match seamlessly when tiled. Flat even diffuse illumination, no cast shadows, no directional light, no ambient occlusion baked strongly, no perspective, no horizon, no vegetation, no objects. Physically plausible fine surface material photograph quality, crisp natural detail, suitable for a 4 metre square ground patch, 2048 square if supported.

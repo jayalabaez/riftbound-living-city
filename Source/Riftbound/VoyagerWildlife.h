@@ -1,0 +1,106 @@
+#pragma once
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "VoyagerWildlife.generated.h"
+
+class UStaticMeshComponent;
+class UMaterialInstanceDynamic;
+
+USTRUCT()
+struct FVoyagerAnimalIdentity
+{
+    GENERATED_BODY()
+    UPROPERTY() int32 System=1;
+    UPROPERTY() int32 Planet=0;
+    UPROPERTY() int32 Species=0;
+    UPROPERTY() int32 Seed=1;
+    UPROPERTY() float Scale=1.f;
+    UPROPERTY() bool bInitialized=false;
+};
+
+USTRUCT()
+struct FVoyagerAnimalPose
+{
+    GENERATED_BODY()
+    UPROPERTY() FVector Location=FVector::ZeroVector;
+    UPROPERTY() FRotator Rotation=FRotator::ZeroRotator;
+    UPROPERTY() FVector Velocity=FVector::ZeroVector;
+    UPROPERTY() float GaitDistance=0.f;
+    UPROPERTY() float ServerTime=0.f;
+    UPROPERTY() uint8 Behavior=0; //0 grazing,1 wandering,2 fleeing.
+};
+
+/** An original articulated creature; the server owns behavior and radial motion. */
+UCLASS()
+class RIFTBOUND_API AVoyagerAnimal : public AActor
+{
+    GENERATED_BODY()
+public:
+    AVoyagerAnimal();
+    virtual void BeginPlay() override;
+    virtual void Tick(float DeltaSeconds) override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    virtual FVector GetVelocity() const override { return Pose.Velocity; }
+    void InitializeAnimal(int32 System,int32 Planet,int32 Species,int32 Seed);
+    FString SpeciesName() const;
+    FString BehaviorName() const;
+    int32 PlanetIndex() const { return Identity.Planet; }
+    int32 SpeciesIndex() const { return Identity.Species; }
+    int32 SystemIndex() const { return Identity.System; }
+    bool IsFleeing() const { return Pose.Behavior==2; }
+private:
+    UPROPERTY() TObjectPtr<USceneComponent> VisualRoot;
+    UPROPERTY() TObjectPtr<USceneComponent> BodyRoot;
+    UPROPERTY() TObjectPtr<USceneComponent> NeckPivot;
+    UPROPERTY() TObjectPtr<USceneComponent> TailPivot;
+    UPROPERTY() TArray<TObjectPtr<USceneComponent>> LegPivots;
+    UPROPERTY() TArray<TObjectPtr<USceneComponent>> KneePivots;
+    UPROPERTY() TArray<TObjectPtr<USceneComponent>> WingPivots;
+    UPROPERTY() TArray<TObjectPtr<UActorComponent>> VisualParts;
+    UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> Materials;
+    UPROPERTY(ReplicatedUsing=OnRep_Identity) FVoyagerAnimalIdentity Identity;
+    UPROPERTY(ReplicatedUsing=OnRep_Pose) FVoyagerAnimalPose Pose;
+    UFUNCTION() void OnRep_Identity();
+    UFUNCTION() void OnRep_Pose();
+    FVector Home=FVector::ZeroVector;
+    FVector Destination=FVector::ZeroVector;
+    FRandomStream Random;
+    float ThinkRemaining=0.f;
+    float MovementAccumulator=0.f;
+    float CurrentSpeed=0.f;
+    float AnimatedNeck=0.f;
+    bool bVisualsBuilt=false;
+    void BuildVisuals();
+    void ClearVisuals();
+    void SimulateBehavior(float DeltaSeconds);
+    void Animate(float DeltaSeconds);
+    double SynchronizedTime() const;
+};
+
+/** The shared population remains bounded even across different planets/players. */
+UCLASS()
+class RIFTBOUND_API AVoyagerWildlifeManager : public AActor
+{
+    GENERATED_BODY()
+public:
+    AVoyagerWildlifeManager();
+    virtual void BeginPlay() override;
+    virtual void Tick(float DeltaSeconds) override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    int32 PopulationCount() const { return Population; }
+    int32 PopulationOnPlanet(int32 Planet) const;
+    int32 SpeciesPresentCount() const { return SpeciesPresent; }
+    static constexpr int32 MaximumPopulation=24;
+private:
+    UPROPERTY() TArray<TObjectPtr<AVoyagerAnimal>> Animals;
+    UPROPERTY(Replicated) int32 Population=0;
+    UPROPERTY(Replicated) TArray<int32> PlanetPopulations;
+    UPROPERTY(Replicated) int32 SpeciesPresent=0;
+    int32 ActiveSystem=INDEX_NONE;
+    uint32 SpawnSequence=0;
+    int32 ViewCursor=0;
+    void ClearPopulation();
+    void UpdateCounts();
+    bool SpawnNear(APawn* Explorer,int32 Planet,int32 ExistingNearby);
+};

@@ -1,0 +1,37 @@
+{
+  "provenance": "Original procedural synthesis created for Riftbound. No external samples.",
+  "sounds": [
+    {
+      "name": "S_Gun",
+      "path": "SourceArt/Audio/S_Gun.wav",
+      "seconds": 0.42,
+      "sample_rate": 44100,
+      "channels": 1,
+      "peak": 0.75
+    },
+    {
+      "name": "S_Explosion",
+      "path": "SourceArt/Audio/S_Explosion.wav",
+      "seconds": 1.8,
+      "sample_rate": 44100,
+      "channels": 1,
+      "peak": 0.8
+    },
+    {
+      "name": "S_Hit",
+      "path": "SourceArt/Audio/S_Hit.wav",
+      "seconds": 0.24,
+      "sample_rate": 44100,
+      "channels": 1,
+      "peak": 0.6
+    },
+    {
+      "name": "S_Ambient",
+      "path": "SourceArt/Audio/S_Ambient.wav",
+      "seconds": 16.0,
+      "sample_rate": 44100,
+      "channels": 2,
+      "peak": 0.17
+    }
+  ]
+}

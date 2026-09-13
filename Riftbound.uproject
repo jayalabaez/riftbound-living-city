@@ -1,0 +1,21 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.8",
+  "Category": "Games",
+  "Description": "RIFTBOUND - four explorers, one broken reality. A procedural cooperative survival FPS. Also hosts LIVING CITY, a city simulation built as separate modules (see CLAUDE.md).",
+  "Modules": [
+    { "Name": "Riftbound", "Type": "Runtime", "LoadingPhase": "Default" },
+    { "Name": "LivingCitySim", "Type": "Runtime", "LoadingPhase": "PreDefault" },
+    { "Name": "LivingCityGame", "Type": "Runtime", "LoadingPhase": "Default" },
+    { "Name": "LivingCityEditor", "Type": "Editor", "LoadingPhase": "Default" }
+  ],
+  "Plugins": [
+    { "Name": "AndroidFileServer", "Enabled": false },
+    { "Name": "PythonScriptPlugin", "Enabled": true },
+    { "Name": "EditorScriptingUtilities", "Enabled": true },
+    { "Name": "ProceduralMeshComponent", "Enabled": true },
+    { "Name": "StateTree", "Enabled": true },
+    { "Name": "GameplayStateTree", "Enabled": true },
+    { "Name": "PCG", "Enabled": true }
+  ]
+}

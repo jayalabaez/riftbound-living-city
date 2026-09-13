@@ -1,0 +1,29 @@
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+*.sln
+*.suo
+Packaged/
+
+# --- LIVING CITY: pure-C++ sim build output ---
+Sim/build/
+Sim/out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.VC.db
+*.vcxproj*
+.vscode/
+*.log
+run.log
+
+# Personal progress and local backups must never be published.
+Backups/
+*.sav
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example

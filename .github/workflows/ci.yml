@@ -1,0 +1,41 @@
+# LIVING CITY - continuous integration.
+#
+# This workflow builds and tests the simulation core WITHOUT Unreal. That is the whole
+# payoff of architecture rule R1: the invariants that actually matter - determinism, money
+# conservation, save round-trip, zero steady-state allocation - are verifiable in a job
+# that never installs a 100 GB engine, and therefore run on every single commit.
+#
+# The Unreal side is not built here. It is built locally; a hosted runner cannot install
+# UE 5.8 in reasonable time. Unreal builds and rendered checks run separately on the
+# development machine. Run-CI.ps1 is the same simulation gate locally and on GitHub.
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sim-core:
+    name: Sim core - purity, tests, determinism
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false          # CI never needs the art; only Sim/ and Scripts/ matter here
+
+      - name: Sim gate - purity, build, invariants, determinism and replay
+        shell: pwsh
+        run: ./Scripts/Run-CI.ps1 -Config Release
+
+      - name: Throughput benchmark
+        shell: pwsh
+        run: ./Sim/build/Release/livingcity_headless.exe bench --ticks 200000
